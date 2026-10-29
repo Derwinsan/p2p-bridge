@@ -40,7 +40,6 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    // 1. Consultar API Pública de Binance P2P
     const payload = { page: 1, rows: 100, asset: 'USDT', fiat: 'VES' };
     const headers = { 'Content-Type': 'application/json' };
     
@@ -48,9 +47,11 @@ async function fetchAndIngest() {
       method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
     });
 
-    // 2. Buscar el anuncio de "Inversiones DJS" o el precio 1.028
+    // FILTRO CORREGIDO: Ahora busca con el guion exacto "Inversiones-DJS" o el UID si fuera necesario
     const djsAd = buyData.data.find(ad => 
-      ad.advertiser.nickName === 'Inversiones DJS' || ad.adv.price === '1.028'
+      ad.advertiser.nickName.includes('Inversiones-DJS') || 
+      ad.advertiser.nickName.includes('Inversiones') ||
+      ad.adv.price === '1.028'
     );
 
     if (djsAd) {
@@ -70,10 +71,9 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró el anuncio Inversiones DJS' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró el anuncio Inversiones-DJS' });
     }
 
-    // 3. Ingestar anuncios generales para D1
     const normalize = (data, source) => data.data.map(item => ({
       id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
       minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
