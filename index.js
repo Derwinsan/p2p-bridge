@@ -9,6 +9,10 @@ const PORT = process.env.PORT || 10000;
 const WORKER_URL = process.env.WORKER_URL;
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 
+// DATOS EXACTOS DEL ANUNCIO DEL PRESIDENTE
+const TARGET_ADV_NO = "13788738308616540160"; 
+const TARGET_TRADE_TYPE = "SELL"; // Es una venta de USDT
+
 let lastFetch = null;
 let liveStatusData = null; 
 
@@ -19,17 +23,12 @@ function log(level, event, data = {}) {
 async function fetchWithRetry(url, options, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const start = Date.now();
       const res = await fetch(url, { ...options, signal: AbortSignal.timeout(10000) });
-      const duration = Date.now() - start;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      log('INFO', 'fetch_success', { duration_ms: duration, retry_count: i });
       return await res.json();
     } catch (err) {
-      const backoff = (1000 * Math.pow(2, i)) * (0.8 + Math.random() * 0.4);
-      log('WARN', 'fetch_retry', { error: err.message, retry_count: i, backoff_ms: backoff });
       if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, backoff));
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
 }
@@ -37,29 +36,23 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    // FILTRO EXACTO COMO EL NAVEGADOR
+    // Buscamos el anuncio exacto por su advNo
     const payload = { 
       page: 1, 
-      rows: 100, 
+      rows: 10, 
       asset: 'USDT', 
       fiat: 'USD',
-      transAmount: '10',
-      payTypes: ['Mercantil Bank Panama'] 
+      advNo: TARGET_ADV_NO 
     };
     const headers = { 'Content-Type': 'application/json' };
     
-    const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
+    const data = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: TARGET_TRADE_TYPE })
     });
 
-    log('INFO', 'total_ads_escaneados', { cantidad: buyData.data ? buyData.data.length : 0 });
+    log('INFO', 'resultado_busqueda_advNo', { cantidad: data.data ? data.data.length : 0 });
 
-    // Buscar a Inversiones-DJS o el precio 1.028 en esta lista filtrada
-    const djsAd = buyData.data.find(ad => 
-      ad.advertiser.nickName.includes('Inversiones') || 
-      ad.advertiser.nickName.includes('DJS') ||
-      ad.adv.price === '1.028'
-    );
+    const djsAd = data.data && data.data.length > 0 ? data.data[0] : null;
 
     if (djsAd) {
       const rate = parseFloat(djsAd.adv.price);
@@ -77,32 +70,7 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS con los filtros exactos' });
-    }
-
-    // Ingesta general
-    if (buyData.data && buyData.data.length > 0) {
-      const normalize = (data, source) => data.map(item => ({
-        id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
-        minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
-        maxSingleTransAmount: parseFloat(item.adv.maxSingleTransAmount).toString(),
-        surplusAmount: parseFloat(item.adv.surplusAmount).toString(),
-        payMethodName: item.adv.tradeMethods.map(m => m.tradeMethodName).join(', '),
-        nickName: item.advertiser.nickName, source: source
-      }));
-
-      const adsToIngest = normalize(buyData.data, 'BUY');
-      
-      const ingestRes = await fetch(`${WORKER_URL}/internal/ads-ingest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': BRIDGE_TOKEN },
-        body: JSON.stringify({ ads: adsToIngest, fetched_at: new Date().toISOString() })
-      });
-      
-      if (ingestRes.ok) {
-        const ingestJson = await ingestRes.json();
-        log('INFO', 'ingest_success', { inserted: ingestJson.inserted });
-      }
+      log('WARN', 'ad_not_found', { message: 'No se encontró el advNo especificado. El anuncio puede estar pausado.' });
     }
 
     lastFetch = new Date().toISOString();
@@ -114,10 +82,6 @@ async function fetchAndIngest() {
 app.get('/api/live-status', (req, res) => {
   if (!liveStatusData) return res.status(503).json({ error: 'Datos no disponibles' });
   res.json(liveStatusData);
-});
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'UP', uptime: process.uptime(), last_fetch: lastFetch });
 });
 
 app.listen(PORT, () => {
