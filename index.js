@@ -37,33 +37,36 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    // LA SOLUCIÓN: order: 'RECENT' y merchantCheck: true, payTypes exacto
-    const payload = { 
-      page: 1, 
-      rows: 100, 
-      asset: 'USDT', 
-      fiat: 'USD', 
-      transAmount: '10',
-      order: 'RECENT', 
-      merchantCheck: true,
-      payTypes: ['Mercantil Bank Panama'] 
-    };
-    const headers = { 'Content-Type': 'application/json' };
+    let allAds = [];
     
-    const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
-    });
+    // BARRIDO: Consultamos las primeras 5 páginas (500 anuncios)
+    for (let page = 1; page <= 5; page++) {
+      // Filtro simple: USD, Monto 10, Banco Mercantil (sin nombres raros)
+      const payload = { 
+        page: page, 
+        rows: 100, 
+        asset: 'USDT', 
+        fiat: 'USD', 
+        transAmount: '10',
+        payTypes: ['Mercantil'] 
+      };
+      const headers = { 'Content-Type': 'application/json' };
+      
+      const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+        method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
+      });
 
-    // Diagnóstico del Top 10
-    if (buyData.data && buyData.data.length > 0) {
-      const top10 = buyData.data.slice(0, 10).map(ad => `${ad.advertiser.nickName} (Tasa: ${ad.adv.price})`);
-      log('INFO', 'TOP_10_RECIENTES_MERCANTIL', { lista: top10 });
-    } else {
-      log('WARN', 'sin_anuncios', { message: 'Binance no devolvió anuncios recientes' });
+      if (buyData.data && buyData.data.length > 0) {
+        allAds = allAds.concat(buyData.data);
+      } else {
+        break; // Si una página viene vacía, nos detenemos
+      }
     }
 
-    // Buscar a Inversiones-DJS
-    const djsAd = buyData.data.find(ad => 
+    log('INFO', 'total_ads_escaneados', { cantidad: allAds.length });
+
+    // Buscar a Inversiones-DJS en los 500 anuncios
+    const djsAd = allAds.find(ad => 
       ad.advertiser.nickName.includes('Inversiones') || 
       ad.advertiser.nickName.includes('DJS') ||
       ad.adv.price === '1.028'
@@ -85,11 +88,11 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS en el Top 100 reciente' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS en las 5 páginas' });
     }
 
-    // Ingesta general
-    const normalize = (data, source) => data.data.map(item => ({
+    // Ingesta general (Solo de la primera página para no saturar)
+    const normalize = (data, source) => data.slice(0, 100).map(item => ({
       id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
       minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
       maxSingleTransAmount: parseFloat(item.adv.maxSingleTransAmount).toString(),
@@ -98,12 +101,12 @@ async function fetchAndIngest() {
       nickName: item.advertiser.nickName, source: source
     }));
 
-    const ads = normalize(buyData, 'BUY');
+    const adsToIngest = normalize(allAds, 'BUY');
     
     const ingestRes = await fetch(`${WORKER_URL}/internal/ads-ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': BRIDGE_TOKEN },
-      body: JSON.stringify({ ads, fetched_at: new Date().toISOString() })
+      body: JSON.stringify({ ads: adsToIngest, fetched_at: new Date().toISOString() })
     });
     
     if (ingestRes.ok) {
