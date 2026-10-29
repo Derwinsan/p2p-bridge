@@ -1,15 +1,32 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 require('dotenv').config();
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
+const WORKER_URL = process.env.WORKER_URL;
+const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 
-const TARGET_ADV_NO = "13788738308616540160"; 
+// CATÁLOGO DE ANUNCIOS DEL PRESIDENTE (Extraído de sus capturas)
+const MY_ADS = [
+  { advNo: "13788738308616540160", type: "Venta", fiat: "USD", bank: "Mony / Mercantil", defaultRate: 1.028 },
+  { advNo: "12788743243852333056", type: "Compra", fiat: "USD", bank: "Mony / Mercantil", defaultRate: 0.995 },
+  { advNo: "13889651524355346432", type: "Venta", fiat: "USD", bank: "Zinli", defaultRate: 1.015 },
+  { advNo: "12846937295282139136", type: "Compra", fiat: "USD", bank: "Global66", defaultRate: 0.965 },
+  { advNo: "13846928069702168576", type: "Venta", fiat: "USD", bank: "Global66", defaultRate: 1.040 },
+  { advNo: "13845160920031973376", type: "Venta", fiat: "USD", bank: "Wally Tech", defaultRate: 1.032 },
+  { advNo: "12825301616433655808", type: "Compra", fiat: "USD", bank: "Wally Tech", defaultRate: 1.000 },
+  { advNo: "12809282872302145536", type: "Compra", fiat: "VES", bank: "Mercantil", defaultRate: 990.100 },
+  { advNo: "13809282175735218176", type: "Venta", fiat: "VES", bank: "Mercantil", defaultRate: 980.500 },
+  { advNo: "12799453012358836224", type: "Compra", fiat: "USD", bank: "Mony / Mercantil", defaultRate: 1.002 },
+  { advNo: "12793323393524480000", type: "Compra", fiat: "VES", bank: "Bancamiga", defaultRate: 879.200 },
+  { advNo: "13793304353196560384", type: "Venta", fiat: "VES", bank: "Bancamiga", defaultRate: 979.500 }
+];
 
 let lastFetch = null;
-let liveStatusData = null; 
+let liveStatusArray = []; 
 
 function log(level, event, data = {}) {
   console.log(JSON.stringify({ timestamp: new Date().toISOString(), level, event, ...data }));
@@ -28,84 +45,113 @@ async function fetchWithRetry(url, options, retries = 3) {
   }
 }
 
-async function findTargetAd(tradeType) {
-  for (let page = 1; page <= 5; page++) {
-    const payload = { page, rows: 100, asset: 'USDT', fiat: 'USD' };
+// --- TAREA 1: Monitoreo Global para Semáforos ---
+async function fetchAndIngestGlobal() {
+  try {
+    const payload = { page: 1, rows: 100, asset: 'USDT', fiat: 'VES' };
     const headers = { 'Content-Type': 'application/json' };
     
-    try {
-      const data = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-        method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType })
+    const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
+    });
+    const sellData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'SELL' })
+    });
+
+    const normalize = (data, source) => data.data ? data.data.map(item => ({
+      id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
+      minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
+      maxSingleTransAmount: parseFloat(item.adv.maxSingleTransAmount).toString(),
+      surplusAmount: parseFloat(item.adv.surplusAmount).toString(),
+      payMethodName: item.adv.tradeMethods.map(m => m.tradeMethodName).join(', '),
+      nickName: item.advertiser.nickName, source: source
+    })) : [];
+
+    const ads = [...normalize(buyData, 'BUY'), ...normalize(sellData, 'SELL')];
+    
+    if (ads.length > 0) {
+      const ingestRes = await fetch(`${WORKER_URL}/internal/ads-ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': BRIDGE_TOKEN },
+        body: JSON.stringify({ ads, fetched_at: new Date().toISOString() })
       });
-      if (data.data && data.data.length > 0) {
-        const found = data.data.find(ad => ad.adv.advNo === TARGET_ADV_NO);
-        if (found) return found;
-      } else {
-        break; // no more pages
+      if (ingestRes.ok) {
+        const ingestJson = await ingestRes.json();
+        log('INFO', 'ingest_success', { inserted: ingestJson.inserted });
       }
-    } catch (e) {
-      log('WARN', 'fetch_page_error', { page, tradeType, error: e.message });
     }
-  }
-  return null;
-}
-
-async function fetchAndIngest() {
-  log('INFO', 'polling_started');
-  try {
-    let ad = await findTargetAd('BUY');
-    if (!ad) {
-      ad = await findTargetAd('SELL');
-    }
-
-    if (ad) {
-      const rate = parseFloat(ad.adv.price);
-      const m_total_usd = 100; 
-      const opex_periodo_usd = 10.70;
-      const itbms_panama_usd = 1.40;
-      const ganancia_neta_real = (rate * m_total_usd) - opex_periodo_usd - itbms_panama_usd;
-
-      liveStatusData = {
-        nombre: ad.advertiser.nickName,
-        estado: 'Activo (Real)',
-        tasa: rate.toString(),
-        ganancia_neta_real_usd: ganancia_neta_real.toFixed(2),
-        actualizado_al: new Date().toISOString()
-      };
-      log('INFO', 'live_status_calculated', liveStatusData);
-    } else {
-      log('WARN', 'ad_not_found', { message: 'Anuncio oculto por Binance (Restringido). Usando datos de respaldo.' });
-      
-      // Fallback de Seguridad (Basado en la captura del Presidente)
-      const rate = 1.028;
-      const m_total_usd = 100; 
-      const opex_periodo_usd = 10.70;
-      const itbms_panama_usd = 1.40;
-      const ganancia_neta_real = (rate * m_total_usd) - opex_periodo_usd - itbms_panama_usd;
-
-      liveStatusData = {
-        nombre: 'Inversiones-DJS',
-        estado: 'Restringido (API oculta)',
-        tasa: rate.toString(),
-        ganancia_neta_real_usd: ganancia_neta_real.toFixed(2),
-        actualizado_al: new Date().toISOString()
-      };
-      log('INFO', 'fallback_used', liveStatusData);
-    }
-
     lastFetch = new Date().toISOString();
   } catch (error) {
-    log('ERROR', 'polling_failed', { error: error.message });
+    log('ERROR', 'polling_global_failed', { error: error.message });
   }
+}
+
+// --- TAREA 2: Monitoreo de la Flota de Anuncios ---
+async function fetchMyFleetStatus() {
+  try {
+    let currentStatusArray = [];
+    
+    // Descargamos las primeras páginas del mercado para intentar encontrar nuestros anuncios
+    let allMarketAds = [];
+    for (let page = 1; page <= 3; page++) {
+      const payload = { page, rows: 100, asset: 'USDT', fiat: 'USD' };
+      const headers = { 'Content-Type': 'application/json' };
+      const data = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+        method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'SELL' }) // Miramos SELL
+      });
+      if (data.data && data.data.length > 0) allMarketAds = allMarketAds.concat(data.data);
+    }
+
+    // Evaluamos cada uno de nuestros anuncios
+    for (const myAd of MY_ADS) {
+      const found = allMarketAds.find(ad => ad.adv.advNo === myAd.advNo);
+      
+      let currentRate = myAd.defaultRate;
+      let status = 'Desconectado / Oculto';
+      
+      if (found) {
+        currentRate = parseFloat(found.adv.price);
+        status = 'En línea (Real)';
+      }
+
+      // Calculamos la ganancia estimada (solo si es USD, para VES se maneja distinto)
+      let ganancia = 0;
+      if (myAd.fiat === 'USD') {
+        ganancia = (currentRate * 100) - 10.70 - 1.40;
+      }
+
+      currentStatusArray.push({
+        advNo: myAd.advNo,
+        nombre: 'Inversiones-DJS',
+        tipo: myAd.type,
+        fiat: myAd.fiat,
+        banco: myAd.bank,
+        tasa: currentRate.toString(),
+        estado: status,
+        ganancia_estimada_usd: ganancia.toFixed(2)
+      });
+    }
+
+    liveStatusArray = currentStatusArray;
+    log('INFO', 'fleet_status_updated', { total_anuncios: liveStatusArray.length });
+
+  } catch (error) {
+    log('ERROR', 'polling_fleet_failed', { error: error.message });
+  }
+}
+
+async function runAll() {
+  await fetchAndIngestGlobal();
+  await fetchMyFleetStatus();
 }
 
 app.get('/api/live-status', (req, res) => {
-  if (!liveStatusData) return res.status(503).json({ error: 'Datos no disponibles' });
-  res.json(liveStatusData);
+  if (!liveStatusArray || liveStatusArray.length === 0) return res.status(503).json({ error: 'Datos no disponibles' });
+  res.json(liveStatusArray); // Ahora devuelve un ARRAY
 });
 
 app.listen(PORT, () => {
   log('INFO', 'server_started', { port: PORT });
-  fetchAndIngest();
-  setInterval(fetchAndIngest, 5 * 60 * 1000);
+  runAll();
+  setInterval(runAll, 5 * 60 * 1000);
 });
