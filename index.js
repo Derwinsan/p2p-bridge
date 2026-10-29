@@ -38,17 +38,15 @@ async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
     let allAds = [];
+    const targetUid = '319538093'; // UID del Presidente
     
-    // BARRIDO: Consultamos las primeras 5 páginas (500 anuncios)
+    // Escaneamos las primeras 5 páginas (500 anuncios) para asegurar encontrarlo
     for (let page = 1; page <= 5; page++) {
-      // Filtro simple: USD, Monto 10, Banco Mercantil (sin nombres raros)
       const payload = { 
         page: page, 
         rows: 100, 
         asset: 'USDT', 
-        fiat: 'USD', 
-        transAmount: '10',
-        payTypes: ['Mercantil'] 
+        fiat: 'USD'
       };
       const headers = { 'Content-Type': 'application/json' };
       
@@ -59,18 +57,14 @@ async function fetchAndIngest() {
       if (buyData.data && buyData.data.length > 0) {
         allAds = allAds.concat(buyData.data);
       } else {
-        break; // Si una página viene vacía, nos detenemos
+        break; 
       }
     }
 
     log('INFO', 'total_ads_escaneados', { cantidad: allAds.length });
 
-    // Buscar a Inversiones-DJS en los 500 anuncios
-    const djsAd = allAds.find(ad => 
-      ad.advertiser.nickName.includes('Inversiones') || 
-      ad.advertiser.nickName.includes('DJS') ||
-      ad.adv.price === '1.028'
-    );
+    // FILTRO MAESTRO: Buscar por UID exacto
+    const djsAd = allAds.find(ad => ad.advertiser.userNo === targetUid);
 
     if (djsAd) {
       const rate = parseFloat(djsAd.adv.price);
@@ -88,10 +82,10 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS en las 5 páginas' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró el UID 319538093 en las 5 páginas de USD' });
     }
 
-    // Ingesta general (Solo de la primera página para no saturar)
+    // Ingesta general (solo los primeros 100)
     const normalize = (data, source) => data.slice(0, 100).map(item => ({
       id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
       minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
