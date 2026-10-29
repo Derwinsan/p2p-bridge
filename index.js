@@ -37,34 +37,29 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    let allAds = [];
-    const targetUid = '319538093'; // UID del Presidente
+    // FILTRO EXACTO COMO EL NAVEGADOR
+    const payload = { 
+      page: 1, 
+      rows: 100, 
+      asset: 'USDT', 
+      fiat: 'USD',
+      transAmount: '10',
+      payTypes: ['Mercantil Bank Panama'] 
+    };
+    const headers = { 'Content-Type': 'application/json' };
     
-    // Escaneamos las primeras 5 páginas (500 anuncios) para asegurar encontrarlo
-    for (let page = 1; page <= 5; page++) {
-      const payload = { 
-        page: page, 
-        rows: 100, 
-        asset: 'USDT', 
-        fiat: 'USD'
-      };
-      const headers = { 'Content-Type': 'application/json' };
-      
-      const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-        method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
-      });
+    const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
+    });
 
-      if (buyData.data && buyData.data.length > 0) {
-        allAds = allAds.concat(buyData.data);
-      } else {
-        break; 
-      }
-    }
+    log('INFO', 'total_ads_escaneados', { cantidad: buyData.data ? buyData.data.length : 0 });
 
-    log('INFO', 'total_ads_escaneados', { cantidad: allAds.length });
-
-    // FILTRO MAESTRO: Buscar por UID exacto
-    const djsAd = allAds.find(ad => ad.advertiser.userNo === targetUid);
+    // Buscar a Inversiones-DJS o el precio 1.028 en esta lista filtrada
+    const djsAd = buyData.data.find(ad => 
+      ad.advertiser.nickName.includes('Inversiones') || 
+      ad.advertiser.nickName.includes('DJS') ||
+      ad.adv.price === '1.028'
+    );
 
     if (djsAd) {
       const rate = parseFloat(djsAd.adv.price);
@@ -82,30 +77,32 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró el UID 319538093 en las 5 páginas de USD' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS con los filtros exactos' });
     }
 
-    // Ingesta general (solo los primeros 100)
-    const normalize = (data, source) => data.slice(0, 100).map(item => ({
-      id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
-      minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
-      maxSingleTransAmount: parseFloat(item.adv.maxSingleTransAmount).toString(),
-      surplusAmount: parseFloat(item.adv.surplusAmount).toString(),
-      payMethodName: item.adv.tradeMethods.map(m => m.tradeMethodName).join(', '),
-      nickName: item.advertiser.nickName, source: source
-    }));
+    // Ingesta general
+    if (buyData.data && buyData.data.length > 0) {
+      const normalize = (data, source) => data.map(item => ({
+        id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
+        minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
+        maxSingleTransAmount: parseFloat(item.adv.maxSingleTransAmount).toString(),
+        surplusAmount: parseFloat(item.adv.surplusAmount).toString(),
+        payMethodName: item.adv.tradeMethods.map(m => m.tradeMethodName).join(', '),
+        nickName: item.advertiser.nickName, source: source
+      }));
 
-    const adsToIngest = normalize(allAds, 'BUY');
-    
-    const ingestRes = await fetch(`${WORKER_URL}/internal/ads-ingest`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': BRIDGE_TOKEN },
-      body: JSON.stringify({ ads: adsToIngest, fetched_at: new Date().toISOString() })
-    });
-    
-    if (ingestRes.ok) {
-      const ingestJson = await ingestRes.json();
-      log('INFO', 'ingest_success', { inserted: ingestJson.inserted });
+      const adsToIngest = normalize(buyData.data, 'BUY');
+      
+      const ingestRes = await fetch(`${WORKER_URL}/internal/ads-ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Bridge-Token': BRIDGE_TOKEN },
+        body: JSON.stringify({ ads: adsToIngest, fetched_at: new Date().toISOString() })
+      });
+      
+      if (ingestRes.ok) {
+        const ingestJson = await ingestRes.json();
+        log('INFO', 'ingest_success', { inserted: ingestJson.inserted });
+      }
     }
 
     lastFetch = new Date().toISOString();
