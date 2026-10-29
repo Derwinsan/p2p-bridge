@@ -1,5 +1,5 @@
 const express = require('express');
-const { randomUUID, createHmac } = require('crypto');
+const { randomUUID } = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -8,9 +8,6 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const WORKER_URL = process.env.WORKER_URL;
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
-
-const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
-const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
 
 let lastFetch = null;
 let liveStatusData = null; 
@@ -40,24 +37,19 @@ async function fetchWithRetry(url, options, retries = 3) {
   }
 }
 
-function signQuery(queryString) {
-  return createHmac('sha256', BINANCE_SECRET_KEY).update(queryString).digest('hex');
-}
-
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    const timestamp = Date.now();
-    const queryString = `asset=USDT&fiat=VES&tradeType=BUY&timestamp=${timestamp}`;
-    const signature = signQuery(queryString);
-    const myAdsUrl = `https://api.binance.com/sapi/v1/c2c/adv/list?${queryString}&signature=${signature}`;
-
-    const myAdsRes = await fetchWithRetry(myAdsUrl, {
-      method: 'GET',
-      headers: { 'X-MBX-APIKEY': BINANCE_API_KEY }
+    // 1. Consultar API Pública de Binance P2P
+    const payload = { page: 1, rows: 100, asset: 'USDT', fiat: 'VES' };
+    const headers = { 'Content-Type': 'application/json' };
+    
+    const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
     });
 
-    const djsAd = myAdsRes.data.find(ad => 
+    // 2. Buscar el anuncio de "Inversiones DJS" o el precio 1.028
+    const djsAd = buyData.data.find(ad => 
       ad.advertiser.nickName === 'Inversiones DJS' || ad.adv.price === '1.028'
     );
 
@@ -81,12 +73,7 @@ async function fetchAndIngest() {
       log('WARN', 'ad_not_found', { message: 'No se encontró el anuncio Inversiones DJS' });
     }
 
-    const payload = { page: 1, rows: 100, asset: 'USDT', fiat: 'VES' };
-    const headers = { 'Content-Type': 'application/json' };
-    const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
-    });
-    
+    // 3. Ingestar anuncios generales para D1
     const normalize = (data, source) => data.data.map(item => ({
       id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
       minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
