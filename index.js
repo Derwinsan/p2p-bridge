@@ -22,10 +22,7 @@ async function fetchWithRetry(url, options, retries = 3) {
       const start = Date.now();
       const res = await fetch(url, { ...options, signal: AbortSignal.timeout(10000) });
       const duration = Date.now() - start;
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`HTTP ${res.status} - ${errText}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       log('INFO', 'fetch_success', { duration_ms: duration, retry_count: i });
       return await res.json();
     } catch (err) {
@@ -40,17 +37,31 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    const payload = { page: 1, rows: 100, asset: 'USDT', fiat: 'VES' };
+    // FILTRO APLICADO: Solo Banco Mercantil y tradeType BUY
+    const payload = { 
+      page: 1, 
+      rows: 100, 
+      asset: 'USDT', 
+      fiat: 'VES', 
+      payTypes: ['Mercantil'] // <--- Filtro para Banco Mercantil Panamá
+    };
     const headers = { 'Content-Type': 'application/json' };
     
     const buyData = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
       method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
     });
 
-    // FILTRO CORREGIDO: Ahora busca con el guion exacto "Inversiones-DJS" o el UID si fuera necesario
+    // --- DIAGNÓSTICO: Imprimir el Top 10 de anunciantes de Mercantil ---
+    if (buyData.data && buyData.data.length > 0) {
+      const top10 = buyData.data.slice(0, 10).map(ad => `${ad.advertiser.nickName} (Tasa: ${ad.adv.price})`);
+      log('INFO', 'TOP_10_MERCANTIL', { lista: top10 });
+    } else {
+      log('WARN', 'sin_anuncios_mercantil', { message: 'Binance no devolvió anuncios para el filtro Mercantil' });
+    }
+
+    // BUSCAR A INVERSIONES-DJS (con o sin guion)
     const djsAd = buyData.data.find(ad => 
-      ad.advertiser.nickName.includes('Inversiones-DJS') || 
-      ad.advertiser.nickName.includes('Inversiones') ||
+      ad.advertiser.nickName.includes('Inversiones') || 
       ad.adv.price === '1.028'
     );
 
@@ -59,7 +70,6 @@ async function fetchAndIngest() {
       const m_total_usd = 100; 
       const opex_periodo_usd = 10.70;
       const itbms_panama_usd = 1.40;
-      
       const ganancia_neta_real = (rate * m_total_usd) - opex_periodo_usd - itbms_panama_usd;
 
       liveStatusData = {
@@ -71,9 +81,10 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró el anuncio Inversiones-DJS' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones en el Top 100 de Mercantil' });
     }
 
+    // Ingesta general (solo de Mercantil)
     const normalize = (data, source) => data.data.map(item => ({
       id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
       minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
@@ -103,9 +114,7 @@ async function fetchAndIngest() {
 }
 
 app.get('/api/live-status', (req, res) => {
-  if (!liveStatusData) {
-    return res.status(503).json({ error: 'Datos de Binance no disponibles aún' });
-  }
+  if (!liveStatusData) return res.status(503).json({ error: 'Datos no disponibles' });
   res.json(liveStatusData);
 });
 
