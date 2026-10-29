@@ -9,7 +9,6 @@ const PORT = process.env.PORT || 10000;
 const WORKER_URL = process.env.WORKER_URL;
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 
-// CATÁLOGO DE ANUNCIOS DEL PRESIDENTE (Extraído de sus capturas)
 const MY_ADS = [
   { advNo: "13788738308616540160", type: "Venta", fiat: "USD", bank: "Mony / Mercantil", defaultRate: 1.028 },
   { advNo: "12788743243852333056", type: "Compra", fiat: "USD", bank: "Mony / Mercantil", defaultRate: 0.995 },
@@ -45,7 +44,6 @@ async function fetchWithRetry(url, options, retries = 3) {
   }
 }
 
-// --- TAREA 1: Monitoreo Global para Semáforos ---
 async function fetchAndIngestGlobal() {
   try {
     const payload = { page: 1, rows: 100, asset: 'USDT', fiat: 'VES' };
@@ -86,26 +84,21 @@ async function fetchAndIngestGlobal() {
   }
 }
 
-// --- TAREA 2: Monitoreo de la Flota de Anuncios ---
 async function fetchMyFleetStatus() {
   try {
     let currentStatusArray = [];
-    
-    // Descargamos las primeras páginas del mercado para intentar encontrar nuestros anuncios
     let allMarketAds = [];
     for (let page = 1; page <= 3; page++) {
       const payload = { page, rows: 100, asset: 'USDT', fiat: 'USD' };
       const headers = { 'Content-Type': 'application/json' };
       const data = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-        method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'SELL' }) // Miramos SELL
+        method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'SELL' })
       });
       if (data.data && data.data.length > 0) allMarketAds = allMarketAds.concat(data.data);
     }
 
-    // Evaluamos cada uno de nuestros anuncios
     for (const myAd of MY_ADS) {
       const found = allMarketAds.find(ad => ad.adv.advNo === myAd.advNo);
-      
       let currentRate = myAd.defaultRate;
       let status = 'Desconectado / Oculto';
       
@@ -114,7 +107,6 @@ async function fetchMyFleetStatus() {
         status = 'En línea (Real)';
       }
 
-      // Calculamos la ganancia estimada (solo si es USD, para VES se maneja distinto)
       let ganancia = 0;
       if (myAd.fiat === 'USD') {
         ganancia = (currentRate * 100) - 10.70 - 1.40;
@@ -145,9 +137,19 @@ async function runAll() {
   await fetchMyFleetStatus();
 }
 
+// --- RUTAS DE SALUD (Para el Monitor de Render) ---
+app.get('/', (req, res) => {
+  res.status(200).send('P2P Bridge is running perfectly.');
+});
+
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'UP', uptime: process.uptime(), last_fetch: lastFetch });
+});
+
+// --- RUTA DE DATOS ---
 app.get('/api/live-status', (req, res) => {
   if (!liveStatusArray || liveStatusArray.length === 0) return res.status(503).json({ error: 'Datos no disponibles' });
-  res.json(liveStatusArray); // Ahora devuelve un ARRAY
+  res.json(liveStatusArray); 
 });
 
 app.listen(PORT, () => {
