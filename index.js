@@ -37,13 +37,16 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    // LA CLAVE: transAmount: '10' obliga a Binance a mostrar solo anuncios que acepten 10 USD
+    // LA SOLUCIÓN: order: 'RECENT' y merchantCheck: true, payTypes exacto
     const payload = { 
       page: 1, 
       rows: 100, 
       asset: 'USDT', 
       fiat: 'USD', 
-      transAmount: '10'
+      transAmount: '10',
+      order: 'RECENT', 
+      merchantCheck: true,
+      payTypes: ['Mercantil Bank Panama'] 
     };
     const headers = { 'Content-Type': 'application/json' };
     
@@ -54,9 +57,9 @@ async function fetchAndIngest() {
     // Diagnóstico del Top 10
     if (buyData.data && buyData.data.length > 0) {
       const top10 = buyData.data.slice(0, 10).map(ad => `${ad.advertiser.nickName} (Tasa: ${ad.adv.price})`);
-      log('INFO', 'TOP_10_MERCANTIL_USD_10$', { lista: top10 });
+      log('INFO', 'TOP_10_RECIENTES_MERCANTIL', { lista: top10 });
     } else {
-      log('WARN', 'sin_anuncios', { message: 'Binance no devolvió anuncios para este monto' });
+      log('WARN', 'sin_anuncios', { message: 'Binance no devolvió anuncios recientes' });
     }
 
     // Buscar a Inversiones-DJS
@@ -82,7 +85,7 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS en el Top 100 para 10 USD' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS en el Top 100 reciente' });
     }
 
     // Ingesta general
