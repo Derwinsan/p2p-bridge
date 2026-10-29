@@ -5,8 +5,6 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 10000;
-const WORKER_URL = process.env.WORKER_URL;
-const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 
 // DATOS EXACTOS DEL ANUNCIO DEL PRESIDENTE
 const TARGET_ADV_NO = "13788738308616540160"; 
@@ -34,53 +32,34 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    let allAds = [];
-    let page = 1;
-    let found = false;
+    // CONSULTA DIRECTA AL DETALLE DEL ANUNCIO (SIN PAGINACIÓN)
+    const url = `https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/detail?advNo=${TARGET_ADV_NO}`;
     
-    // BARRIDO: Mientras no lo encontremos y haya páginas, seguimos buscando (máx 10 páginas)
-    while (page <= 10 && !found) {
-      const payload = { 
-        page: page, 
-        rows: 100, 
-        asset: 'USDT', 
-        fiat: 'USD'
+    const data = await fetchWithRetry(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (data && data.code === '000000' && data.data) {
+      const ad = data.data;
+      const rate = parseFloat(ad.price);
+      
+      // Cálculo de ganancia neta
+      const m_total_usd = 100; 
+      const opex_periodo_usd = 10.70;
+      const itbms_panama_usd = 1.40;
+      const ganancia_neta_real = (rate * m_total_usd) - opex_periodo_usd - itbms_panama_usd;
+
+      liveStatusData = {
+        nombre: ad.advertiser.nickName || 'Inversiones-DJS',
+        estado: ad.advStatus === 1 ? 'Activo' : 'Inactivo',
+        tasa: rate.toString(),
+        ganancia_neta_real_usd: ganancia_neta_real.toFixed(2),
+        actualizado_al: new Date().toISOString()
       };
-      const headers = { 'Content-Type': 'application/json' };
-      
-      const data = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-        method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'SELL' })
-      });
-
-      if (!data.data || data.data.length === 0) break; // No hay más páginas
-
-      const djsAd = data.data.find(ad => ad.adv.advNo === TARGET_ADV_NO);
-      
-      if (djsAd) {
-        found = true;
-        const rate = parseFloat(djsAd.adv.price);
-        const m_total_usd = 100; 
-        const opex_periodo_usd = 10.70;
-        const itbms_panama_usd = 1.40;
-        const ganancia_neta_real = (rate * m_total_usd) - opex_periodo_usd - itbms_panama_usd;
-
-        liveStatusData = {
-          nombre: djsAd.advertiser.nickName,
-          estado: 'Activo',
-          tasa: rate.toString(),
-          ganancia_neta_real_usd: ganancia_neta_real.toFixed(2),
-          actualizado_al: new Date().toISOString()
-        };
-        log('INFO', 'live_status_calculated', liveStatusData);
-      } else {
-        log('INFO', 'pagina_escaneada', { pagina: page, cantidad: data.data.length });
-        allAds = allAds.concat(data.data);
-        page++;
-      }
-    }
-
-    if (!found) {
-      log('WARN', 'ad_not_found', { message: `Se escanearon ${page - 1} páginas y no se encontró el advNo` });
+      log('INFO', 'live_status_calculated', liveStatusData);
+    } else {
+      log('WARN', 'ad_not_found', { message: 'No se pudo obtener el detalle del anuncio. Binance devolvió: ', data });
     }
 
     lastFetch = new Date().toISOString();
