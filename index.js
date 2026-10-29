@@ -1,5 +1,4 @@
 const express = require('express');
-const { randomUUID } = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -11,7 +10,6 @@ const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 
 // DATOS EXACTOS DEL ANUNCIO DEL PRESIDENTE
 const TARGET_ADV_NO = "13788738308616540160"; 
-const TARGET_TRADE_TYPE = "SELL"; // Es una venta de USDT
 
 let lastFetch = null;
 let liveStatusData = null; 
@@ -36,23 +34,25 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    // Buscamos el anuncio exacto por su advNo
+    // 1. Consultamos el mercado de VENTA (SELL) con monto de 10 (para sortear los grandes)
     const payload = { 
       page: 1, 
-      rows: 10, 
+      rows: 100, 
       asset: 'USDT', 
       fiat: 'USD',
-      advNo: TARGET_ADV_NO 
+      transAmount: '10'
     };
     const headers = { 'Content-Type': 'application/json' };
     
     const data = await fetchWithRetry('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: TARGET_TRADE_TYPE })
+      method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'SELL' })
     });
 
-    log('INFO', 'resultado_busqueda_advNo', { cantidad: data.data ? data.data.length : 0 });
+    const totalAds = data.data ? data.data.length : 0;
+    log('INFO', 'total_ads_escaneados', { cantidad: totalAds });
 
-    const djsAd = data.data && data.data.length > 0 ? data.data[0] : null;
+    // 2. Filtro Local: Buscamos el advNo exacto en la lista
+    const djsAd = data.data ? data.data.find(ad => ad.adv.advNo === TARGET_ADV_NO) : null;
 
     if (djsAd) {
       const rate = parseFloat(djsAd.adv.price);
@@ -70,7 +70,12 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró el advNo especificado. El anuncio puede estar pausado.' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró el advNo 13788738308616540160 en la lista' });
+      // Log de diagnóstico: ¿Qué anuncios sí vinieron?
+      if (data.data && data.data.length > 0) {
+        const top5 = data.data.slice(0, 5).map(ad => `${ad.advertiser.nickName} (${ad.adv.advNo})`);
+        log('INFO', 'primeros_5_anuncios', { lista: top5 });
+      }
     }
 
     lastFetch = new Date().toISOString();
