@@ -37,13 +37,13 @@ async function fetchWithRetry(url, options, retries = 3) {
 async function fetchAndIngest() {
   log('INFO', 'polling_started');
   try {
-    // FILTRO APLICADO: Solo Banco Mercantil y tradeType BUY
+    // LA CLAVE: transAmount: '10' obliga a Binance a mostrar solo anuncios que acepten 10 USD
     const payload = { 
       page: 1, 
       rows: 100, 
       asset: 'USDT', 
-      fiat: 'VES', 
-      payTypes: ['Mercantil'] // <--- Filtro para Banco Mercantil Panamá
+      fiat: 'USD', 
+      transAmount: '10'
     };
     const headers = { 'Content-Type': 'application/json' };
     
@@ -51,17 +51,18 @@ async function fetchAndIngest() {
       method: 'POST', headers, body: JSON.stringify({ ...payload, tradeType: 'BUY' })
     });
 
-    // --- DIAGNÓSTICO: Imprimir el Top 10 de anunciantes de Mercantil ---
+    // Diagnóstico del Top 10
     if (buyData.data && buyData.data.length > 0) {
       const top10 = buyData.data.slice(0, 10).map(ad => `${ad.advertiser.nickName} (Tasa: ${ad.adv.price})`);
-      log('INFO', 'TOP_10_MERCANTIL', { lista: top10 });
+      log('INFO', 'TOP_10_MERCANTIL_USD_10$', { lista: top10 });
     } else {
-      log('WARN', 'sin_anuncios_mercantil', { message: 'Binance no devolvió anuncios para el filtro Mercantil' });
+      log('WARN', 'sin_anuncios', { message: 'Binance no devolvió anuncios para este monto' });
     }
 
-    // BUSCAR A INVERSIONES-DJS (con o sin guion)
+    // Buscar a Inversiones-DJS
     const djsAd = buyData.data.find(ad => 
       ad.advertiser.nickName.includes('Inversiones') || 
+      ad.advertiser.nickName.includes('DJS') ||
       ad.adv.price === '1.028'
     );
 
@@ -81,16 +82,16 @@ async function fetchAndIngest() {
       };
       log('INFO', 'live_status_calculated', liveStatusData);
     } else {
-      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones en el Top 100 de Mercantil' });
+      log('WARN', 'ad_not_found', { message: 'No se encontró Inversiones-DJS en el Top 100 para 10 USD' });
     }
 
-    // Ingesta general (solo de Mercantil)
+    // Ingesta general
     const normalize = (data, source) => data.data.map(item => ({
       id: randomUUID(), advNo: item.adv.advNo, price: parseFloat(item.adv.price).toString(),
       minSingleTransAmount: parseFloat(item.adv.minSingleTransAmount).toString(),
       maxSingleTransAmount: parseFloat(item.adv.maxSingleTransAmount).toString(),
       surplusAmount: parseFloat(item.adv.surplusAmount).toString(),
-      payMethodName: item.adv.tradeMethods.map(m => m.payMethodName).join(', '),
+      payMethodName: item.adv.tradeMethods.map(m => m.tradeMethodName).join(', '),
       nickName: item.advertiser.nickName, source: source
     }));
 
