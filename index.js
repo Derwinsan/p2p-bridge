@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 10000;
 const WORKER_URL = process.env.WORKER_URL;
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
-const BINANCE_API_SECRET = process.env.BINANCE_API_SECRET;
+const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
 
 const MY_ADS = [
   { advNo: "13788738308616540160", type: "Venta", fiat: "USD", bank: "Mony / Mercantil", defaultRate: 1.028 },
@@ -55,7 +55,7 @@ async function fetchMyAdsFromBinance() {
   const timestamp = serverTime.serverTime;
   const params = { timestamp, recvWindow: 10000 };
   const query = Object.keys(params).map(k => `${k}=${params[k]}`).join('&');
-  const signature = getBinanceSignature(query, BINANCE_API_SECRET);
+  const signature = getBinanceSignature(query, BINANCE_SECRET_KEY);
   const url = `https://api.binance.com/sapi/v1/c2c/agent/ads/listWithPagination?${query}&signature=${signature}`;
 
   const res = await fetchWithRetry(url, {
@@ -109,8 +109,8 @@ async function fetchAndIngestGlobal() {
 
 async function fetchMyFleetStatus() {
   try {
-    if (!BINANCE_API_KEY || !BINANCE_API_SECRET) {
-      log('ERROR', 'fleet_status_missing_credentials', { msg: 'Faltan BINANCE_API_KEY o BINANCE_API_SECRET' });
+    if (!BINANCE_API_KEY || !BINANCE_SECRET_KEY) {
+      log('ERROR', 'fleet_status_missing_credentials', { msg: 'Faltan BINANCE_API_KEY o BINANCE_SECRET_KEY' });
       return;
     }
 
@@ -128,7 +128,7 @@ async function fetchMyFleetStatus() {
       if (realAd) {
         currentRate = parseFloat(realAd.price);
         // advStatus: 1 = Online, 3 = Offline, 2 = ?
-        status = realAd.advStatus === 1 ? 'En línea (Real)' : 'Desconectado / Oculto';
+        status = realAd.advStatus === 1 ? 'En lÃ­nea (Real)' : 'Desconectado / Oculto';
       }
 
       let ganancia = 0;
@@ -149,7 +149,7 @@ async function fetchMyFleetStatus() {
     });
 
     liveStatusArray = currentStatusArray;
-    log('INFO', 'fleet_status_updated', { total_anuncios: liveStatusArray.length, activos: liveStatusArray.filter(a => a.estado === 'En línea (Real)').length });
+    log('INFO', 'fleet_status_updated', { total_anuncios: liveStatusArray.length, activos: liveStatusArray.filter(a => a.estado === 'En lÃ­nea (Real)').length });
   } catch (error) {
     log('ERROR', 'polling_fleet_failed', { error: error.message });
   }
