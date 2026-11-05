@@ -1,3 +1,4 @@
+require('./daily_summary');
 const express = require('express');
 const { randomUUID, createHmac } = require('crypto');
 require('dotenv').config();
