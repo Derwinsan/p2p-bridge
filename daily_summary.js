@@ -1,20 +1,53 @@
 const cron = require('node-cron');
-const fetch = require('node-fetch');
+const https = require('https');
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const WORKER_URL = 'https://p2p-api.derwinsan1.workers.dev';
-const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN; 
+const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
+
+function fetchJson(url, headers = {}) {
+    return new Promise((resolve, reject) => {
+        https.get(url, { headers }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try { resolve(JSON.parse(data)); } 
+                catch (e) { resolve({ raw: data }); }
+            });
+        }).on('error', reject);
+    });
+}
+
+function postJson(url, body, headers = {}) {
+    return new Promise((resolve, reject) => {
+        const dataString = JSON.stringify(body);
+        const req = https.request(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(dataString),
+                ...headers
+            }
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => resolve(data));
+        });
+        req.on('error', reject);
+        req.write(dataString);
+        req.end();
+    });
+}
 
 async function enviarResumenDiario() {
     try {
         console.log("Solicitando resumen diario al Worker...");
         
-        const res = await fetch(`${WORKER_URL}/internal/daily-summary`, {
-            headers: { 'X-Bridge-Token': BRIDGE_TOKEN }
+        const json = await fetchJson(`${WORKER_URL}/internal/daily-summary`, {
+            'X-Bridge-Token': BRIDGE_TOKEN
         });
         
-        const json = await res.json();
         if (!json.ok) throw new Error("Error del Worker");
 
         const data = json.data;
@@ -36,14 +69,10 @@ async function enviarResumenDiario() {
             mensaje += "¡Buen trabajo hoy, Presidente! 🚀";
         }
 
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: TELEGRAM_CHAT_ID,
-                text: mensaje,
-                parse_mode: 'Markdown'
-            })
+        await postJson(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+            chat_id: TELEGRAM_CHAT_ID,
+            text: mensaje,
+            parse_mode: 'Markdown'
         });
         
         console.log("✅ Resumen enviado a Telegram.");
