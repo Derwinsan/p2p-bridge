@@ -4,10 +4,10 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const crypto = require('crypto');
 
 const API_KEY = process.env.BINANCE_API_KEY;
-const API_SECRET = process.env.BINANCE_API_SECRET;
+const API_SECRET = process.env.BINANCE_API_SECRET || process.env.BINANCE_SECRET_KEY; // Respaldo agregado
 const PROXY_USER = process.env.PROXY_USER;
 const PROXY_PASS = process.env.PROXY_PASS;
-const PROXY_URL = process.env.PROXY_URL || 'gate.nodemaven.com:8080';
+const PROXY_URL = process.env.PROXY_URL || '51.146.17.165:46502';
 const WORKER_URL = 'https://p2p-api.derwinsan1.workers.dev';
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN;
 
