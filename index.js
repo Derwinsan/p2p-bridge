@@ -21,7 +21,9 @@ const server = http.createServer(async (req, res) => {
     const symbol = url.searchParams.get('symbol') || 'BTCUSDT';
     const interval = url.searchParams.get('interval') || '1h';
     const limit = url.searchParams.get('limit') || 48;
-    const data = await binance.getKlines(symbol, interval, limit);
+    const startTime = url.searchParams.get('startTime');
+    const endTime = url.searchParams.get('endTime');
+    const data = await binance.getKlines(symbol, interval, limit, startTime, endTime);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(data));
   }

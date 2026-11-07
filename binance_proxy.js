@@ -20,9 +20,13 @@ async function getPrecios() {
   return { precios };
 }
 
-async function getKlines(symbol, interval = '1h', limit = 48) {
+async function getKlines(symbol, interval = '1h', limit = 48, startTime = null, endTime = null) {
   try {
-    const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`, { httpsAgent: agent, timeout: 15000 });
+    let url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    if (startTime) url += `&startTime=${startTime}`;
+    if (endTime) url += `&endTime=${endTime}`;
+    
+    const res = await axios.get(url, { httpsAgent: agent, timeout: 15000 });
     return { klines: res.data };
   } catch (e) {
     console.error(`Error klines ${symbol}:`, e.message);
