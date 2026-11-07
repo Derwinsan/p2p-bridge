@@ -4,6 +4,35 @@ require('./daily_summary');
 require('./ads_bot');
 const binance = require('./binance_proxy');
 
+// Endpoint Proxy para Binance (evita bloqueo 451)
+app.post('/api/binance/proxy', async (req, res) => {
+  try {
+    const { url, apiKey } = req.body;
+    if (!url || !apiKey) {
+      return res.status(400).json({ error: 'Faltan url o apiKey' });
+    }
+    
+    // Usamos axios con el proxy CyberYozh (el mismo que ya usamos para klines)
+    const axios = require('axios');
+    const { HttpsProxyAgent } = require('https-proxy-agent');
+    const PROXY_USER = process.env.PROXY_USER;
+    const PROXY_PASS = process.env.PROXY_PASS;
+    const PROXY_URL = process.env.PROXY_URL;
+    const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
+    const agent = new HttpsProxyAgent(proxyUrl);
+
+    const response = await axios.get(url, {
+      headers: { 'X-MBX-APIKEY': apiKey },
+      httpsAgent: agent,
+      timeout: 15000
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('[BINANCE PROXY] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const url = new URL(req.url, `http://${req.headers.host}`);
