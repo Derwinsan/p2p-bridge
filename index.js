@@ -23,7 +23,48 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // Endpoint Proxy para Binance (evita bloqueo 451)
+  // 1. Endpoint de Precios (Restaurado)
+  if (req.url === '/api/binance/precios') {
+    try {
+      const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
+      const agent = new HttpsProxyAgent(proxyUrl);
+      const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
+      const precios = {};
+      await Promise.all(symbols.map(async (sym) => {
+        try {
+          const r = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, { httpsAgent: agent, timeout: 10000 });
+          precios[sym] = parseFloat(r.data.price);
+        } catch (e) { console.error(`Error precio ${sym}:`, e.message); }
+      }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ precios }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
+  // 2. Endpoint de Klines/Velas (Restaurado)
+  if (req.url.startsWith('/api/binance/klines')) {
+    try {
+      const urlParams = new URL(req.url, 'http://localhost').searchParams;
+      const symbol = urlParams.get('symbol') || 'BTCUSDT';
+      const interval = urlParams.get('interval') || '1h';
+      const limit = urlParams.get('limit') || 48;
+      
+      const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
+      const agent = new HttpsProxyAgent(proxyUrl);
+      
+      const r = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`, { httpsAgent: agent, timeout: 15000 });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ klines: r.data }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: e.message, klines: [] }));
+    }
+  }
+
+  // 3. Endpoint Proxy para Binance Spot (El que agregamos para los saldos)
   if (req.url === '/api/binance/proxy' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
@@ -34,16 +75,9 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Faltan url o apiKey' }));
         }
-
         const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
         const agent = new HttpsProxyAgent(proxyUrl);
-
-        const response = await axios.get(url, {
-          headers: { 'X-MBX-APIKEY': apiKey },
-          httpsAgent: agent,
-          timeout: 15000
-        });
-
+        const response = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey }, httpsAgent: agent, timeout: 15000 });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(response.data));
       } catch (error) {
@@ -55,13 +89,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Endpoint de health
+  // 4. Health check
   if (req.url === '/health' || req.url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ status: 'ok', ts: Date.now(), tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
   }
 
-  // Respuesta por defecto
+  // 5. Default
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ status: 'ok', tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
 });
@@ -70,4 +104,5 @@ const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`[CLEAN BRIDGE] Servidor en linea en el puerto ${PORT}`);
   console.log(`[CLEAN BRIDGE] Tareas activas: Ingesta P2P, Telegram Diario, Anuncios y OPEX.`);
+  console.log(`[CLEAN BRIDGE] Endpoints: /precios, /klines, /proxy`);
 });
