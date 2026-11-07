@@ -81,12 +81,12 @@ async function enviarResumenDiario() {
     }
 }
 
-cron.schedule('55 23 * * *', () => {
+cron.schedule('30 21 * * *', () => {
     console.log("Ejecutando cron del resumen diario...");
     enviarResumenDiario();
 }, {
     scheduled: true,
-    timezone: "America/Panama"
+    timezone: "America/Caracas"
 });
 
 module.exports = { enviarResumenDiario };
