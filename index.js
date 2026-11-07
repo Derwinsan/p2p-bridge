@@ -20,7 +20,8 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/binance/klines') {
     const symbol = url.searchParams.get('symbol') || 'BTCUSDT';
     const interval = url.searchParams.get('interval') || '1h';
-    const data = await binance.getKlines(symbol, interval);
+    const limit = url.searchParams.get('limit') || 48;
+    const data = await binance.getKlines(symbol, interval, limit);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(data));
   }

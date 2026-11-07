@@ -22,11 +22,12 @@ async function getPrecios() {
 
 async function getKlines(symbol, interval = '1h', limit = 48) {
   try {
-    const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`, { httpsAgent: agent, timeout: 10000 });
+    const res = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`, { httpsAgent: agent, timeout: 15000 });
     return { klines: res.data };
   } catch (e) {
     console.error(`Error klines ${symbol}:`, e.message);
     return { klines: [] };
   }
 }
+
 module.exports = { getPrecios, getKlines };
