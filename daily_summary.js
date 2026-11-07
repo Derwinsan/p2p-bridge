@@ -81,7 +81,7 @@ async function enviarResumenDiario() {
     }
 }
 
-cron.schedule('30 21 * * *', () => {
+cron.schedule('0 22 * * *', () => {
     console.log("Ejecutando cron del resumen diario...");
     enviarResumenDiario();
 }, {
