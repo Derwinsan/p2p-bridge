@@ -1,67 +1,73 @@
 const http = require('http');
+const axios = require('axios');
+const { HttpsProxyAgent } = require('https-proxy-agent');
+
+// Tareas automatizadas
 require('./ingesta_cloud');
 require('./daily_summary');
 require('./ads_bot');
-const binance = require('./binance_proxy');
+require('./opex_bot');
 
-// Endpoint Proxy para Binance (evita bloqueo 451)
-app.post('/api/binance/proxy', async (req, res) => {
-  try {
-    const { url, apiKey } = req.body;
-    if (!url || !apiKey) {
-      return res.status(400).json({ error: 'Faltan url o apiKey' });
-    }
-    
-    // Usamos axios con el proxy CyberYozh (el mismo que ya usamos para klines)
-    const axios = require('axios');
-    const { HttpsProxyAgent } = require('https-proxy-agent');
-    const PROXY_USER = process.env.PROXY_USER;
-    const PROXY_PASS = process.env.PROXY_PASS;
-    const PROXY_URL = process.env.PROXY_URL;
-    const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
-    const agent = new HttpsProxyAgent(proxyUrl);
+const PROXY_USER = process.env.PROXY_USER;
+const PROXY_PASS = process.env.PROXY_PASS;
+const PROXY_URL = process.env.PROXY_URL;
 
-    const response = await axios.get(url, {
-      headers: { 'X-MBX-APIKEY': apiKey },
-      httpsAgent: agent,
-      timeout: 15000
-    });
-
-    res.json(response.data);
-  } catch (error) {
-    console.error('[BINANCE PROXY] Error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
 const server = http.createServer(async (req, res) => {
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  if (url.pathname === '/health' || url.pathname === '/ping') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ status: 'ok', ts: Date.now() }));
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
   }
-  if (url.pathname === '/api/binance/precios') {
-    const data = await binance.getPrecios();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(data));
+
+  // Endpoint Proxy para Binance (evita bloqueo 451)
+  if (req.url === '/api/binance/proxy' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const { url, apiKey } = JSON.parse(body);
+        if (!url || !apiKey) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Faltan url o apiKey' }));
+        }
+
+        const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
+        const agent = new HttpsProxyAgent(proxyUrl);
+
+        const response = await axios.get(url, {
+          headers: { 'X-MBX-APIKEY': apiKey },
+          httpsAgent: agent,
+          timeout: 15000
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(response.data));
+      } catch (error) {
+        console.error('[BINANCE PROXY] Error:', error.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error.message, details: error.response?.data || null }));
+      }
+    });
+    return;
   }
-  if (url.pathname === '/api/binance/klines') {
-    const symbol = url.searchParams.get('symbol') || 'BTCUSDT';
-    const interval = url.searchParams.get('interval') || '1h';
-    const limit = url.searchParams.get('limit') || 48;
-    const startTime = url.searchParams.get('startTime');
-    const endTime = url.searchParams.get('endTime');
-    const data = await binance.getKlines(symbol, interval, limit, startTime, endTime);
+
+  // Endpoint de health
+  if (req.url === '/health' || req.url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(data));
+    return res.end(JSON.stringify({ status: 'ok', ts: Date.now(), tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
   }
+
+  // Respuesta por defecto
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', tasks: ['ingesta', 'telegram_daily', 'ads_hourly'] }));
+  res.end(JSON.stringify({ status: 'ok', tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
 });
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`[CLEAN BRIDGE] Servidor en linea en el puerto ${PORT}`);
-  console.log(`[CLEAN BRIDGE] Tareas activas: Ingesta, Telegram, Anuncios y Binance API.`);
+  console.log(`[CLEAN BRIDGE] Tareas activas: Ingesta P2P, Telegram Diario, Anuncios y OPEX.`);
 });
