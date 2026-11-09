@@ -55,7 +55,7 @@ async function enviarAnunciosTelegram() {
       return;
     }
 
-    const miIndex = data.findIndex(a => a.advertiser.userNo === MY_USER_NO);
+    const miIndex = data.findIndex(a => String(a.advertiser.userNo) === String(MY_USER_NO));
     const miPosicion = miIndex !== -1 ? miIndex + 1 : null;
 
     // Filtrar por rango de precio configurado
@@ -73,7 +73,7 @@ async function enviarAnunciosTelegram() {
       mensaje += `📈 <b>Top 7 en tu rango:</b>\n\n`;
       dentroDelRango.slice(0, 7).forEach((a, i) => {
         const precio = parseFloat(a.adv.price).toFixed(3);
-        const esMio = a.advertiser.userNo === MY_USER_NO;
+        const esMio = String(a.advertiser.userNo) === String(MY_USER_NO);
         const prefijo = esMio ? '👉 <b>MI ANUNCIO</b> 👈' : `<b>${i + 1}.</b>`;
         mensaje += `${prefijo} $${precio} | ${escapeHtml(a.advertiser.nickName)}\n`;
       });
