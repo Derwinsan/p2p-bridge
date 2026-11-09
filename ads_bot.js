@@ -7,68 +7,82 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const PROXY_USER = process.env.PROXY_USER;
 const PROXY_PASS = process.env.PROXY_PASS;
 const PROXY_URL = process.env.PROXY_URL;
+const MY_USER_NO = process.env.MY_USER_NO || '319538093';
+const P2P_API_URL = 'https://p2p-api.derwinsan1.workers.dev';
 
-// AQUÍ VA SU USERNO DE BINANCE P2P (Lo configuramos en Render luego)
-const MY_USER_NO = process.env.MY_USER_NO || '123456789'; 
+async function obtenerConfig() {
+  try {
+    const res = await axios.get(`${P2P_API_URL}/config/alertas`, {
+      headers: { 'Authorization': `Bearer ${process.env.BRIDGE_TOKEN || ''}` }
+    });
+    return res.data.data || { activo: 0, precio_min: 0, precio_max: 9999 };
+  } catch (e) {
+    console.error('[ADS BOT] Error obteniendo config:', e.message);
+    return { activo: 0, precio_min: 0, precio_max: 9999 };
+  }
+}
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 async function enviarAnunciosTelegram() {
-  try {
-    if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID || !PROXY_USER || !PROXY_PASS || !PROXY_URL) {
-      console.error('[ADS BOT] Faltan variables de entorno. No se ejecuta.');
-      return;
-    }
+  const config = await obtenerConfig();
+  if (!config.activo) {
+    console.log('[ADS BOT] Alertas desactivadas. No se envía nada.');
+    return;
+  }
 
+  try {
     const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
     const agent = new HttpsProxyAgent(proxyUrl);
 
-    console.log('[ADS BOT] Buscando anuncios publicos...');
+    console.log(`[ADS BOT] Monitoreando Mercantil Panamá entre $${config.precio_min} y $${config.precio_max}...`);
     
-    // Buscamos el Top 20 para asegurar que su anuncio esté ahí si está activo
+    // Parámetros FIJOS (los que ya sabemos que funcionan)
     const res = await axios.post(
       'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
       {
-        page: 1, rows: 20, payTypes: [], countries: [], publisherType: null, asset: 'USDT', fiat: 'VES', tradeType: 'SELL'
+        page: 1, rows: 100, payTypes: ["MercantilBankPanama"], countries: ["VE"], publisherType: null, 
+        asset: 'USDT', fiat: 'USD', tradeType: 'BUY', transAmount: 10
       },
       { httpsAgent: agent, timeout: 15000 }
     );
 
     const data = res.data.data;
     if (!data || data.length === 0) {
-      console.log('[ADS BOT] Sin anuncios en la respuesta.');
+      console.log('[ADS BOT] Sin anuncios en el mercado.');
       return;
     }
 
-    // Encontrar la posición del usuario (0-indexed)
     const miIndex = data.findIndex(a => a.advertiser.userNo === MY_USER_NO);
     const miPosicion = miIndex !== -1 ? miIndex + 1 : null;
 
-    let mensaje = '🚨 <b>TOP 7 ANUNCIOS P2P (USDT/VES)</b> 🚨\n\n';
-    
-    // Mostramos solo los primeros 7
-    data.slice(0, 7).forEach((a, i) => {
-      const precio = parseFloat(a.adv.price).toFixed(2);
-      const banco = (a.adv.tradeMethods || []).map(m => m.tradeMethodName).join(', ') || 'N/A';
-      const disponible = parseFloat(a.adv.surplusAmount).toFixed(2);
-      const nickname = a.advertiser.nickName;
-      
-      const esMio = a.advertiser.userNo === MY_USER_NO;
-      const prefijo = esMio ? '👉 <b>MI ANUNCIO</b> 👈' : `<b>${i + 1}.</b>`;
-      
-      mensaje += `${prefijo} Precio: <b>${precio} Bs</b> | Disp: ${disponible} USDT\n🏦 Banco: ${escapeHtml(banco)}\n👤 Vendedor: ${escapeHtml(nickname)}\n\n`;
+    // Filtrar por rango de precio configurado
+    const dentroDelRango = data.filter(a => {
+      const p = parseFloat(a.adv.price);
+      return p >= config.precio_min && p <= config.precio_max;
     });
 
-    // Agregar el resumen de su posición
-    if (miPosicion) {
-      mensaje += `📍 <b>Tu anuncio está en la posición #${miPosicion} de ${data.length}</b>\n`;
-      if (miPosicion > 7) {
-        mensaje += `<i>(Fuera del Top 7, considera bajar el precio o mejorar el límite)</i>\n`;
-      }
+    let mensaje = `🚨 <b>ALERTA P2P (Mercantil Panamá)</b> 🚨\n`;
+    mensaje += `📊 Rango: $${config.precio_min} - $${config.precio_max}\n\n`;
+
+    if (dentroDelRango.length === 0) {
+      mensaje += `⚠️ Ningún anuncio dentro de tu rango.\n\n`;
     } else {
-      mensaje += `⚠️ <b>Tu anuncio no está en el Top 20.</b>\n<i>(Puede que esté pausado o fuera de este rango).</i>\n`;
+      mensaje += `📈 <b>Top 7 en tu rango:</b>\n\n`;
+      dentroDelRango.slice(0, 7).forEach((a, i) => {
+        const precio = parseFloat(a.adv.price).toFixed(3);
+        const esMio = a.advertiser.userNo === MY_USER_NO;
+        const prefijo = esMio ? '👉 <b>MI ANUNCIO</b> 👈' : `<b>${i + 1}.</b>`;
+        mensaje += `${prefijo} $${precio} | ${escapeHtml(a.advertiser.nickName)}\n`;
+      });
+    }
+
+    if (miPosicion) {
+      mensaje += `\n📍 <b>Tu anuncio está en la posición #${miPosicion} de ${data.length}</b>\n`;
+    } else {
+      mensaje += `\n⚠️ Tu anuncio no está en el Top 100.\n`;
     }
 
     await axios.post(
@@ -76,7 +90,7 @@ async function enviarAnunciosTelegram() {
       { chat_id: TELEGRAM_CHAT_ID, text: mensaje, parse_mode: 'HTML' },
       { timeout: 15000 }
     );
-    console.log('[ADS BOT] Anuncios enviados con inteligencia de posición.');
+    console.log('[ADS BOT] Alerta enviada según configuración.');
   } catch (error) {
     console.error('[ADS BOT] Error:', error.message);
   }
