@@ -37,14 +37,14 @@ async function enviarAnunciosTelegram() {
     const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
     const agent = new HttpsProxyAgent(proxyUrl);
 
-    console.log(`[ADS BOT] Monitoreando Mercantil Panamá entre $${config.precio_min} y $${config.precio_max}...`);
+    console.log(`[ADS BOT] Monitoreando " + config.banco + " entre $${config.precio_min} y $${config.precio_max}...`);
     
     // Parámetros FIJOS (los que ya sabemos que funcionan)
     const res = await axios.post(
       'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
       {
-        page: 1, rows: 100, payTypes: ["MercantilBankPanama"], countries: ["VE"], publisherType: null, 
-        asset: 'USDT', fiat: 'USD', tradeType: 'BUY', transAmount: 10
+        page: 1, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: null, 
+        asset: 'USDT', fiat: 'USD', tradeType: config.trade_type, transAmount: 10
       },
       { httpsAgent: agent, timeout: 15000 }
     );
@@ -64,7 +64,7 @@ async function enviarAnunciosTelegram() {
       return p >= config.precio_min && p <= config.precio_max;
     });
 
-    let mensaje = `🚨 <b>ALERTA P2P (Mercantil Panamá)</b> 🚨\n`;
+    let mensaje = `🚨 <b>ALERTA P2P (" + config.banco + ")</b> 🚨\n`;
     mensaje += `📊 Rango: $${config.precio_min} - $${config.precio_max}\n\n`;
 
     if (dentroDelRango.length === 0) {
