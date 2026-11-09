@@ -5,7 +5,7 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 // Tareas automatizadas
 require('./ingesta_cloud');
 require('./daily_summary');
-require('./ads_bot');
+const { enviarAnunciosTelegram } = require('./ads_bot');
 require('./opex_bot');
 
 const PROXY_USER = process.env.PROXY_USER;
@@ -93,6 +93,19 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/health' || req.url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ status: 'ok', ts: Date.now(), tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
+  }
+
+
+  // Endpoint de prueba manual para el bot de anuncios
+  if (req.url === '/test-ads' && req.method === 'GET') {
+    try {
+      await enviarAnunciosTelegram();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ status: 'ok', message: 'ADS BOT ejecutado manualmente' }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
   }
 
   // 5. Default
