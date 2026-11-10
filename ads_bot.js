@@ -42,7 +42,7 @@ async function procesarAlerta(config, agent) {
     }, { httpsAgent: agent, timeout: 15000 }),
     axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
       page: 2, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant', 
-      asset: 'USDT', fiat: 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
+      asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
     }, { httpsAgent: agent, timeout: 15000 })
   ]);
   
