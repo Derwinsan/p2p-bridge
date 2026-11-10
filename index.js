@@ -29,7 +29,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Endpoint de prueba para el resumen diario
-  if (req.url === '/test-daily' && req.method === 'GET') {
+  if (req.url.includes('test-daily') && req.method === 'GET') {
     try {
       await enviarResumenDiario();
       res.writeHead(200, { 'Content-Type': 'application/json' });
