@@ -39,7 +39,7 @@ async function procesarAlerta(config, agent) {
     'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
     {
       page: 1, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: null, 
-      asset: 'USDT', fiat: 'USD', tradeType: config.trade_type, transAmount: 10
+      asset: 'USDT', fiat: 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
     },
     { httpsAgent: agent, timeout: 15000 }
   );
