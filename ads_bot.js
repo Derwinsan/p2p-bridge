@@ -34,18 +34,21 @@ async function procesarAlerta(config, agent) {
   
   console.log(`[ADS BOT] Monitoreando ${config.banco} ${tipoTexto} entre $${config.precio_min} y $${config.precio_max}...`);
 
-  // ⚠️ EL MONTO ESTÁ FIJO EN 10, PERO LUEGO LO HACEMOS DINÁMICO
-  const res = await axios.post(
-    'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
-    {
+  // Consultar 2 páginas para tener el Top 200
+  const [res1, res2] = await Promise.all([
+    axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
       page: 1, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant', 
       asset: 'USDT', fiat: 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
-    },
-    { httpsAgent: agent, timeout: 15000 }
-  );
+    }, { httpsAgent: agent, timeout: 15000 }),
+    axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      page: 2, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant', 
+      asset: 'USDT', fiat: 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
+    }, { httpsAgent: agent, timeout: 15000 })
+  ]);
+  
+  const data = [...(res1.data.data || []), ...(res2.data.data || [])];
 
-  const data = res.data.data;
-  if (!data || data.length === 0) {
+  if (data.length === 0) {
     console.log(`[ADS BOT] Sin anuncios en ${config.banco} ${tipoTexto}.`);
     return;
   }
@@ -55,14 +58,15 @@ async function procesarAlerta(config, agent) {
     String(a.advertiser.nickName).trim() === 'Inversiones-DJS'
   );
   const miPosicion = miIndex !== -1 ? miIndex + 1 : null;
+  const miAnuncio = miIndex !== -1 ? data[miIndex] : null;
 
   const dentroDelRango = data.filter(a => {
     const p = parseFloat(a.adv.price);
-    return p >= (config.precio_min - 0.002) && p <= (config.precio_max + 0.002);
+    return p >= (config.precio_min - 0.005) && p <= (config.precio_max + 0.005);
   });
 
   let mensaje = `${emoji} <b>ALERTA P2P (${config.banco} - ${tipoTexto})</b> ${emoji}\n`;
-  mensaje += `📊 Rango: $${config.precio_min} - $${config.precio_max}\n\n`;
+  mensaje += `📊 Rango: $${config.precio_min} - $${config.precio_max} (Monto: $${config.monto || 10})\n\n`;
 
   if (dentroDelRango.length === 0) {
     mensaje += `⚠️ Ningún anuncio dentro de tu rango.\n\n`;
@@ -70,16 +74,18 @@ async function procesarAlerta(config, agent) {
     mensaje += `📈 <b>Top 7 en tu rango:</b>\n\n`;
     dentroDelRango.slice(0, 7).forEach((a, i) => {
       const precio = parseFloat(a.adv.price).toFixed(3);
-      const esMio = String(a.advertiser.userNo).trim() === MY_USER_NO.trim() || String(a.advertiser.nickName).trim() === 'Inversiones-DJS';
+      const esMio = String(a.advertiser.userNo) === MY_USER_NO;
       const prefijo = esMio ? '👉 <b>MI ANUNCIO</b> 👈' : `<b>${i + 1}.</b>`;
       mensaje += `${prefijo} $${precio} | ${escapeHtml(a.advertiser.nickName)}\n`;
     });
   }
 
-  if (miPosicion) {
-    mensaje += `\n📍 <b>Tu anuncio está en la posición #${miPosicion} de ${data.length}</b>\n`;
-  } else {
-    mensaje += `\n⚠️ Tu anuncio no está en el Top 100.\n`;
+  // SIEMPRE añadir el anuncio del usuario al final si no está en el Top 7
+  if (miPosicion && miPosicion > 7) {
+    const precio = parseFloat(miAnuncio.adv.price).toFixed(3);
+    mensaje += `\n📍 <b>TU ANUNCIO:</b> $${precio} | Posición #${miPosicion} de ${data.length}\n`;
+  } else if (!miPosicion) {
+    mensaje += `\n⚠️ Tu anuncio no está en el Top 200.\n`;
   }
 
   await axios.post(
