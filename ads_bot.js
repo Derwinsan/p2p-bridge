@@ -114,15 +114,29 @@ async function enviarAnunciosTelegram() {
     const agent = new HttpsProxyAgent(proxyUrl);
 
     let enviados = 0;
+    let fallos = 0;
+    let activas = 0;
     for (const config of configs) {
+      if (config.activo) activas++;
       try {
         await procesarAlerta(config, agent);
         if (config.activo) enviados++;
       } catch (e) {
         console.error(`[ADS BOT] Error en ${config.banco} ${config.trade_type}:`, e.message);
+        fallos++;
       }
     }
     console.log(`[ADS BOT] Ejecución completada. Alertas procesadas: ${enviados}`);
+    if (fallos > 0 && fallos === activas) {
+      try {
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+          chat_id: TELEGRAM_CHAT_ID,
+          text: '🚨 ALERTA CRÍTICA: El Bot P2P no pudo consultar Binance en ninguna alerta. Posible fallo de Proxy o bloqueo de IP.',
+          parse_mode: 'HTML'
+        });
+        console.log('[ADS BOT] Alerta de fallo crítico enviada a Telegram.');
+      } catch (err) {}
+    }
   } catch (error) {
     console.error('[ADS BOT] Error general:', error.message);
   }
