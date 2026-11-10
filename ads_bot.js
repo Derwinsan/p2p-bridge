@@ -38,7 +38,7 @@ async function procesarAlerta(config, agent) {
   const res = await axios.post(
     'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
     {
-      page: 1, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: null, 
+      page: 1, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant', 
       asset: 'USDT', fiat: 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
     },
     { httpsAgent: agent, timeout: 15000 }
@@ -58,7 +58,7 @@ async function procesarAlerta(config, agent) {
 
   const dentroDelRango = data.filter(a => {
     const p = parseFloat(a.adv.price);
-    return p >= config.precio_min && p <= config.precio_max;
+    return p >= (config.precio_min - 0.002) && p <= (config.precio_max + 0.002);
   });
 
   let mensaje = `${emoji} <b>ALERTA P2P (${config.banco} - ${tipoTexto})</b> ${emoji}\n`;
