@@ -84,7 +84,7 @@ async function procesarAlerta(config, agent) {
   // SIEMPRE añadir el anuncio del usuario al final si no está en el Top 7
   if (miPosicion && miPosicion > 7) {
     const precio = parseFloat(miAnuncio.adv.price).toFixed(3);
-    mensaje += `\n📍 <b>TU ANUNCIO:</b> $${precio} | Posición #${miPosicion} de ${data.length}\n`;
+    mensaje += `\n📍 <b>TU ANUNCIO:</b> ${sym}${precio} | Posición #${miPosicion} de ${data.length}\n`;
   } else if (!miPosicion) {
     mensaje += `\n⚠️ Tu anuncio no está en el Top 200.\n`;
   }
