@@ -2,10 +2,10 @@ const http = require('http');
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { enviarResumenDiario } = require('./daily_summary');
+const { enviarAnunciosTelegram } = require('./ads_bot');
 
 // Tareas automatizadas
 require('./ingesta_cloud');
-require('./ads_bot');
 require('./opex_bot');
 
 const PROXY_USER = process.env.PROXY_USER;
@@ -22,33 +22,26 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // Health check
+  // 1. Health check
   if (req.url === '/health' || req.url === '/ping') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ status: 'ok', ts: Date.now(), tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
+    return res.end(JSON.stringify({ status: 'ok', ts: Date.now() }));
   }
 
-
-  // Endpoint de prueba para el bot de anuncios
+  // 2. Test Bot de Anuncios
   if (req.url === '/test-ads' && req.method === 'GET') {
     try {
-      const { enviarAnunciosTelegram } = require('./ads_bot');
-      if (typeof enviarAnunciosTelegram === 'function') {
-        await enviarAnunciosTelegram();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ status: 'ok', message: 'ADS BOT ejecutado manualmente' }));
-      } else {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'La función enviarAnunciosTelegram no está exportada' }));
-      }
+      await enviarAnunciosTelegram();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ status: 'ok', message: 'ADS BOT ejecutado manualmente' }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: e.message }));
     }
   }
 
-  // Endpoint de prueba para el resumen diario
-  if (req.url.includes('test-daily') && req.method === 'GET') {
+  // 3. Test Resumen Diario
+  if (req.url === '/test-daily' && req.method === 'GET') {
     try {
       await enviarResumenDiario();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -59,7 +52,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Precios
+  // 4. Precios (Binance Spot)
   if (req.url === '/api/binance/precios') {
     try {
       const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
@@ -80,7 +73,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Klines
+  // 5. Klines
   if (req.url.startsWith('/api/binance/klines')) {
     try {
       const urlParams = new URL(req.url, 'http://localhost').searchParams;
@@ -98,7 +91,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Proxy Binance Spot
+  // 6. Proxy Binance Spot (para saldos)
   if (req.url === '/api/binance/proxy' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
@@ -116,13 +109,13 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify(response.data));
       } catch (error) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: error.message, details: error.response?.data || null }));
+        res.end(JSON.stringify({ error: error.message }));
       }
     });
     return;
   }
 
-  // Default
+  // 7. Default
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ status: 'ok', tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
 });
@@ -130,6 +123,5 @@ const server = http.createServer(async (req, res) => {
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`[CLEAN BRIDGE] Servidor en linea en el puerto ${PORT}`);
-  console.log(`[CLEAN BRIDGE] Tareas activas: Ingesta P2P, Telegram Diario, Anuncios y OPEX.`);
-  console.log(`[CLEAN BRIDGE] Endpoints: /precios, /klines, /proxy, /test-daily`);
+  console.log(`[CLEAN BRIDGE] Endpoints: /precios, /klines, /proxy, /test-ads, /test-daily`);
 });
