@@ -96,7 +96,7 @@ async function enviarAnunciosTelegram() {
   }
 }
 
-cron.schedule('0 * * * *', () => {
+cron.schedule('0 6-22/2 * * *', () => {
   console.log('[ADS BOT] Ejecutando Cron...');
   enviarAnunciosTelegram();
 }, { scheduled: true, timezone: 'America/Caracas' });
