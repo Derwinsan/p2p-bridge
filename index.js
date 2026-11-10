@@ -28,6 +28,25 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ status: 'ok', ts: Date.now(), tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
   }
 
+
+  // Endpoint de prueba para el bot de anuncios
+  if (req.url === '/test-ads' && req.method === 'GET') {
+    try {
+      const { enviarAnunciosTelegram } = require('./ads_bot');
+      if (typeof enviarAnunciosTelegram === 'function') {
+        await enviarAnunciosTelegram();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: 'ok', message: 'ADS BOT ejecutado manualmente' }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'La función enviarAnunciosTelegram no está exportada' }));
+      }
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
   // Endpoint de prueba para el resumen diario
   if (req.url.includes('test-daily') && req.method === 'GET') {
     try {
