@@ -1,11 +1,11 @@
 const http = require('http');
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const { enviarResumenDiario } = require('./daily_summary');
 
 // Tareas automatizadas
 require('./ingesta_cloud');
-require('./daily_summary');
-const { enviarAnunciosTelegram } = require('./ads_bot');
+require('./ads_bot');
 require('./opex_bot');
 
 const PROXY_USER = process.env.PROXY_USER;
@@ -13,7 +13,6 @@ const PROXY_PASS = process.env.PROXY_PASS;
 const PROXY_URL = process.env.PROXY_URL;
 
 const server = http.createServer(async (req, res) => {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -23,7 +22,25 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // 1. Endpoint de Precios (Restaurado)
+  // Health check
+  if (req.url === '/health' || req.url === '/ping') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ status: 'ok', ts: Date.now(), tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
+  }
+
+  // Endpoint de prueba para el resumen diario
+  if (req.url === '/test-daily' && req.method === 'GET') {
+    try {
+      await enviarResumenDiario();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ status: 'ok', message: 'Resumen diario ejecutado' }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
+  // Precios
   if (req.url === '/api/binance/precios') {
     try {
       const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
@@ -34,7 +51,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const r = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, { httpsAgent: agent, timeout: 10000 });
           precios[sym] = parseFloat(r.data.price);
-        } catch (e) { console.error(`Error precio ${sym}:`, e.message); }
+        } catch (e) { }
       }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ precios }));
@@ -44,17 +61,15 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 2. Endpoint de Klines/Velas (Restaurado)
+  // Klines
   if (req.url.startsWith('/api/binance/klines')) {
     try {
       const urlParams = new URL(req.url, 'http://localhost').searchParams;
       const symbol = urlParams.get('symbol') || 'BTCUSDT';
       const interval = urlParams.get('interval') || '1h';
       const limit = urlParams.get('limit') || 48;
-      
       const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
       const agent = new HttpsProxyAgent(proxyUrl);
-      
       const r = await axios.get(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`, { httpsAgent: agent, timeout: 15000 });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ klines: r.data }));
@@ -64,7 +79,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 3. Endpoint Proxy para Binance Spot (El que agregamos para los saldos)
+  // Proxy Binance Spot
   if (req.url === '/api/binance/proxy' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
@@ -81,7 +96,6 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(response.data));
       } catch (error) {
-        console.error('[BINANCE PROXY] Error:', error.message);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: error.message, details: error.response?.data || null }));
       }
@@ -89,26 +103,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 4. Health check
-  if (req.url === '/health' || req.url === '/ping') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ status: 'ok', ts: Date.now(), tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
-  }
-
-
-  // Endpoint de prueba manual para el bot de anuncios
-  if (req.url === '/test-ads' && req.method === 'GET') {
-    try {
-      await enviarAnunciosTelegram();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ status: 'ok', message: 'ADS BOT ejecutado manualmente' }));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ error: e.message }));
-    }
-  }
-
-  // 5. Default
+  // Default
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ status: 'ok', tasks: ['ingesta', 'telegram_daily', 'ads_hourly', 'opex'] }));
 });
@@ -117,5 +112,5 @@ const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`[CLEAN BRIDGE] Servidor en linea en el puerto ${PORT}`);
   console.log(`[CLEAN BRIDGE] Tareas activas: Ingesta P2P, Telegram Diario, Anuncios y OPEX.`);
-  console.log(`[CLEAN BRIDGE] Endpoints: /precios, /klines, /proxy`);
+  console.log(`[CLEAN BRIDGE] Endpoints: /precios, /klines, /proxy, /test-daily`);
 });
