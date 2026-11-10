@@ -66,7 +66,8 @@ async function procesarAlerta(config, agent) {
   });
 
   let mensaje = `${emoji} <b>ALERTA P2P (${config.banco} - ${tipoTexto})</b> ${emoji}\n`;
-  mensaje += `📊 Rango: $${config.precio_min} - $${config.precio_max} (Monto: $${config.monto || 10})\n\n`;
+  const sym = config.fiat === 'USD' ? '$' : '';
+  mensaje += `📊 Rango: ${sym}${config.precio_min} - ${sym}${config.precio_max} ${config.fiat} (Monto: ${sym}${config.monto || 10})\n\n`;
 
   if (dentroDelRango.length === 0) {
     mensaje += `⚠️ Ningún anuncio dentro de tu rango.\n\n`;
