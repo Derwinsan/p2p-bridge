@@ -55,7 +55,7 @@ async function procesarAlerta(config, agent) {
           countries: [],
           publisherType: null,
           asset: 'USDT', fiat: config.fiat || 'USD',
-          tradeType: config.trade_type === 'BUY' ? 'SELL' : 'BUY'
+          tradeType: config.trade_type
           // ELIMINADO transAmount PARA QUE BINANCE NO OCULTE ANUNCIOS
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
 
