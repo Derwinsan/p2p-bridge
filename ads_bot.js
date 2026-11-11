@@ -94,11 +94,9 @@ async function procesarAlerta(config, agent) {
     const montoUsuario = parseFloat(config.monto) || 10;
     
     let filtrados = data.filter(a => {
-        const price = parseFloat(a.adv.price) || 0;
-        const minTrans = parseFloat(a.adv.minSingleTransAmount) || 0;
-        const maxTrans = parseFloat(a.adv.maxSingleTransAmount) || 999999;
-        return price >= minPrice && price <= maxPrice && montoUsuario >= minTrans && montoUsuario <= maxTrans;
-    });
+    const price = parseFloat(a.adv.price) || 0;
+    return price >= minPrice && price <= maxPrice;
+});
 
     if (filtrados.length === 0) {
         console.log(`[ADS BOT] Sin anuncios en el rango de precio (${config.precio_min} - ${config.precio_max}) o que acepten monto de $${montoUsuario} para ${config.banco}.`);
@@ -120,7 +118,16 @@ async function procesarAlerta(config, agent) {
         mensaje += `${i + 1}. $${price} | ${merchant}\n`;
     });
 
-    // (Eliminado el mensaje falso del Top 200)
+        // RASTREADOR DE COMPETENCIA
+    const MY_NICKNAME = 'Inversiones-DJS';
+    const miPuesto = filtrados.findIndex(a => a.advertiser.nickName.trim() === MY_NICKNAME);
+
+    if (miPuesto !== -1) {
+        const miPrecio = parseFloat(filtrados[miPuesto].adv.price).toFixed(3);
+        mensaje += `\n📍 Tu anuncio (${MY_NICKNAME}) está en el puesto #${miPuesto + 1} a $${miPrecio}.`;
+    } else {
+        mensaje += `\n⚠️ Tu anuncio (${MY_NICKNAME}) no está en este rango de precio.`;
+    }
 
     try {
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
