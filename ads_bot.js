@@ -51,7 +51,7 @@ async function procesarAlerta(config, agent) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         return await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-          page: page, rows: 100, payTypes: [getBinancePayMethod(config.banco)], countries: ["VE"], publisherType: 'merchant',
+          page: page, rows: 100, payTypes: [getBinancePayMethod(config.banco)], countries: [], publisherType: null,
           asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
       } catch (e) {
