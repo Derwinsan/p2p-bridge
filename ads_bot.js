@@ -26,6 +26,18 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function getBinancePayMethod(banco) {
+  const map = {
+    'Wally': 'Wally Tech',                // El único que cambia de nombre en Binance
+    'MercantilBankPanama': 'MercantilBankPanama',
+    'Mercantil': 'Mercantil',
+    'Bancamiga': 'Bancamiga',
+    'Zinli': 'Zinli',
+    'Global66': 'Global66'
+  };
+  return map[banco] || banco;
+}
+
 async function procesarAlerta(config, agent) {
   if (!config.activo) return;
 
@@ -39,7 +51,7 @@ async function procesarAlerta(config, agent) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         return await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-          page: page, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant',
+          page: page, rows: 100, payTypes: [getBinancePayMethod(config.banco)], countries: ["VE"], publisherType: 'merchant',
           asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
       } catch (e) {
