@@ -51,8 +51,8 @@ async function procesarAlerta(config, agent) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const queryPayTypes = getBinancePayMethod(config.banco) === 'Wally Tech' ? [] : [getBinancePayMethod(config.banco)];
-      
-      const res = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+        
+        const res = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
           page: page, rows: 100, 
           payTypes: queryPayTypes,
           countries: [],
@@ -62,45 +62,14 @@ async function procesarAlerta(config, agent) {
           transAmount: config.monto || 10
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
 
+        let finalAds = res.data && res.data.data ? res.data.data : [];
         if (queryPayTypes.length === 0) {
-          const adsData = res.data && res.data.data ? res.data.data : [];
-          const filtrados = adsData.filter(a => 
+          finalAds = finalAds.filter(a => 
             (a.adv.payTypes && a.adv.payTypes.includes('Wally Tech')) || 
             (a.adv.payTypes && a.adv.payTypes.includes('Wally'))
           );
-          return { data: { data: filtrados } };
         }
-        return res;
-
-      // FILTRO LOCAL SOLO SI ES WALLY (Porque Binance no acepta "Wally Tech" en la API)
-      const adsData = resp.data && resp.data.data ? resp.data.data : [];
-      const filtrados = adsData.filter(a => {
-          if (queryPayTypes.length === 0) {
-              return (a.adv.payTypes && a.adv.payTypes.includes('Wally Tech')) || 
-                     (a.adv.payTypes && a.adv.payTypes.includes('Wally'));
-          }
-          return true; 
-      });
-
-      if (filtrados.length === 0) {
-        console.log("[BOT] Sin resultados para " + config.banco);
-      }
-      
-      return { data: { data: filtrados } };
-
-    // FILTRO LOCAL (#L-27)
-    const nombreBinance = getBinancePayMethod(config.banco);
-    const adsData = resp.data && resp.data.data ? resp.data.data : [];
-    const filtrados = adsData.filter(a => 
-      (a.adv.payTypes && a.adv.payTypes.includes(nombreBinance)) || 
-      (a.adv.payTypes && a.adv.payTypes.includes(config.banco))
-    );
-    
-    if (filtrados.length === 0) {
-      console.log("[BOT] Sin resultados para " + config.banco);
-    }
-    
-    return { data: { data: filtrados } };
+        return { data: { data: finalAds } };
       } catch (e) {
         if (attempt === 3) throw e;
         console.log(`[ADS BOT] Fallo de red (Intento ${attempt}/3) en ${config.banco}. Reintentando en 3s...`);
