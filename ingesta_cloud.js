@@ -67,7 +67,7 @@ async function ejecutarIngesta() {
 
         if (todas.length === 0) return;
 
-        const payload = todas.map(o => ({
+        const payload = todas.filter(o => o.orderNumber && o.payMethodName).map(o => ({
             order_number: o.orderNumber,
             trade_type: o.tradeType,
             asset: o.asset,
