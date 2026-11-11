@@ -64,7 +64,10 @@ async function procesarAlerta(config, agent) {
 
   const [res1, res2] = await Promise.all([ fetchPage(1), fetchPage(2) ]);
   
-  const data = [...(res1.data.data || []), ...(res2.data.data || [])];
+  let data = [...(res1.data.data || []), ...(res2.data.data || [])];
+
+  // FILTRO DE COMPETENCIA: Solo Merchants
+  data = data.filter(a => a.advertiser && a.advertiser.userType === 'merchant');
 
   if (data.length === 0) {
     console.log(`[ADS BOT] Sin anuncios en ${config.banco} ${tipoTexto}.`);
