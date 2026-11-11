@@ -63,11 +63,11 @@ async function procesarAlerta(config, agent) {
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
 
         let finalAds = res.data && res.data.data ? res.data.data : [];
-        if (queryPayTypes.length === 0) {
-          finalAds = finalAds.filter(a => 
-            (a.adv.payTypes && a.adv.payTypes.includes('Wally Tech')) || 
-            (a.adv.payTypes && a.adv.payTypes.includes('Wally'))
-          );
+               if (queryPayTypes.length === 0) {
+          finalAds = finalAds.filter(a => {
+            const methods = a.adv.tradeMethods || [];
+            return methods.some(m => m.tradeMethodName === 'Wally Tech' || m.tradeMethodName === 'Wally');
+          });
         }
         return { data: { data: finalAds } };
       } catch (e) {
