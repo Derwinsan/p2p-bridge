@@ -28,7 +28,7 @@ function escapeHtml(s) {
 
 function getBinancePayMethod(banco) {
   const map = {
-    'Wally': 'Wally Tech',                // El único que cambia de nombre en Binance
+    'Wally': 'Wally Tech',
     'MercantilBankPanama': 'MercantilBankPanama',
     'Mercantil': 'Mercantil',
     'Bancamiga': 'Bancamiga',
@@ -41,34 +41,31 @@ function getBinancePayMethod(banco) {
 async function procesarAlerta(config, agent) {
   if (!config.activo) return;
 
-  const emoji = config.trade_type === 'BUY' ? '🟢' : '🔵';
-  const tipoTexto = config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA';
-  
-  console.log(`[ADS BOT] Monitoreando ${config.banco} ${tipoTexto} entre $${config.precio_min} y $${config.precio_max}...`);
-
-  // Consultar 2 páginas para tener el Top 200
   const fetchPage = async (page) => {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const queryPayTypes = getBinancePayMethod(config.banco) === 'Wally Tech' ? [] : [getBinancePayMethod(config.banco)];
-        
+        const isWally = getBinancePayMethod(config.banco).toLowerCase().includes('wally');
+        const queryPayTypes = isWally ? [] : [getBinancePayMethod(config.banco)];
+
         const res = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-          page: page, rows: 100, 
+          page: page, rows: 100,
           payTypes: queryPayTypes,
           countries: [],
           publisherType: null,
-          asset: 'USDT', fiat: config.fiat || 'USD', 
+          asset: 'USDT', fiat: config.fiat || 'USD',
           tradeType: config.trade_type === 'BUY' ? 'SELL' : 'BUY',
           transAmount: config.monto || 10
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
 
         let finalAds = res.data && res.data.data ? res.data.data : [];
-               if (queryPayTypes.length === 0) {
+
+        if (isWally) {
           finalAds = finalAds.filter(a => {
             const methods = a.adv.tradeMethods || [];
-            return methods.some(m => m.tradeMethodName === 'Wally Tech' || m.tradeMethodName === 'Wally');
+            return methods.some(m => m.tradeMethodName.toLowerCase().includes('wally'));
           });
         }
+
         return { data: { data: finalAds } };
       } catch (e) {
         if (attempt === 3) throw e;
@@ -78,65 +75,66 @@ async function procesarAlerta(config, agent) {
     }
   };
 
-  const [res1, res2] = await Promise.all([ fetchPage(1), fetchPage(2) ]);
-  
-  let data = [...(res1.data.data || []), ...(res2.data.data || [])];
+  try {
+    // Búsqueda profunda en 3 páginas
+    const [res1, res2, res3] = await Promise.all([ fetchPage(1), fetchPage(2), fetchPage(3) ]);
+    let data = [...(res1.data.data || []), ...(res2.data.data || []), ...(res3.data.data || [])];
 
-  // FILTRO MANUAL PARA WALLY (por el bug de Binance)
-  if (getBinancePayMethod(config.banco) === 'Wally Tech') {
-    data = data.filter(a => a.adv && a.adv.tradeMethods && a.adv.tradeMethods.some(m => m.tradeMethodName === 'Wally Tech'));
-  }
+    if (data.length === 0) {
+      console.log(`[ADS BOT] Sin anuncios en ${config.banco} ${config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA'}.`);
+      return;
+    }
 
-  // FILTRO DE COMPETENCIA: Solo Merchants
-  data = data.filter(a => a.advertiser && a.advertiser.userType === 'merchant');
-
-  if (data.length === 0) {
-    console.log(`[ADS BOT] Sin anuncios en ${config.banco} ${tipoTexto}.`);
-    return;
-  }
-
-  const miIndex = data.findIndex(a => 
-    String(a.advertiser.userNo).trim() === MY_USER_NO.trim() || 
-    String(a.advertiser.nickName).trim() === 'Inversiones-DJS'
-  );
-  const miPosicion = miIndex !== -1 ? miIndex + 1 : null;
-  const miAnuncio = miIndex !== -1 ? data[miIndex] : null;
-
-  const dentroDelRango = data.filter(a => {
-    const p = parseFloat(a.adv.price);
-    return p >= (config.precio_min - 0.005) && p <= (config.precio_max + 0.005);
-  });
-
-  let mensaje = `${emoji} <b>ALERTA P2P (${config.banco} - ${tipoTexto})</b> ${emoji}\n`;
-  const sym = config.fiat === 'USD' ? '$' : '';
-  mensaje += `📊 Rango: ${sym}${config.precio_min} - ${sym}${config.precio_max} ${config.fiat} (Monto: ${sym}${config.monto || 10})\n\n`;
-
-  if (dentroDelRango.length === 0) {
-    mensaje += `⚠️ Ningún anuncio dentro de tu rango.\n\n`;
-  } else {
-    mensaje += `📈 <b>Top 7 en tu rango:</b>\n\n`;
-    dentroDelRango.slice(0, 7).forEach((a, i) => {
-      const precio = parseFloat(a.adv.price).toFixed(3);
-      const esMio = String(a.advertiser.userNo) === MY_USER_NO;
-      const prefijo = esMio ? '👉 <b>MI ANUNCIO</b> 👈' : `<b>${i + 1}.</b>`;
-      mensaje += `${prefijo} $${precio} | ${escapeHtml(a.advertiser.nickName)}\n`;
+    // FILTRO POR RANGO DE PRECIO
+    const minPrice = parseFloat(config.precio_min);
+    const maxPrice = parseFloat(config.precio_max);
+    
+    let filtrados = data.filter(a => {
+        const price = parseFloat(a.adv.price);
+        return price >= minPrice && price <= maxPrice;
     });
-  }
 
-  // SIEMPRE añadir el anuncio del usuario al final si no está en el Top 7
-  if (miPosicion && miPosicion > 7) {
-    const precio = parseFloat(miAnuncio.adv.price).toFixed(3);
-    mensaje += `\n📍 <b>TU ANUNCIO:</b> ${sym}${precio} | Posición #${miPosicion} de ${data.length}\n`;
-  } else if (!miPosicion) {
-    mensaje += `\n⚠️ Tu anuncio no está en el Top 200.\n`;
-  }
+    if (filtrados.length === 0) {
+        console.log(`[ADS BOT] Sin anuncios en el rango de precio (${config.precio_min} - ${config.precio_max}) para ${config.banco}.`);
+        return;
+    }
 
-  await axios.post(
-    `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
-    { chat_id: TELEGRAM_CHAT_ID, text: mensaje, parse_mode: 'HTML' },
-    { timeout: 15000 }
-  );
-  console.log(`[ADS BOT] Alerta enviada (${config.banco} ${tipoTexto}).`);
+    // ORDENAR: Compra busca el menor precio, Venta busca el mayor
+    if (config.trade_type === 'BUY') {
+        filtrados.sort((a, b) => parseFloat(a.adv.price) - parseFloat(b.adv.price));
+    } else {
+        filtrados.sort((a, b) => parseFloat(b.adv.price) - parseFloat(a.adv.price));
+    }
+
+    // TOMAR EL TOP 7
+    const top7 = filtrados.slice(0, 7);
+
+    // FORMATEAR MENSAJE
+    const emoji = config.trade_type === 'BUY' ? '🟢' : '🔵';
+    let mensaje = `${emoji} ALERTA P2P (${escapeHtml(config.banco)} - ${config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA'}) ${emoji}\n`;
+    mensaje += `📊 Rango: $${config.precio_min} - $${config.precio_max} USD (Monto: $${config.monto})\n\n`;
+    mensaje += `📈 Top ${top7.length} en tu rango:\n\n`;
+
+    top7.forEach((ad, i) => {
+        const price = parseFloat(ad.adv.price).toFixed(3);
+        const merchant = escapeHtml(ad.advertiser.nickName);
+        mensaje += `${i + 1}. $${price} | ${merchant}\n`;
+    });
+
+    mensaje += `\n⚠️ Tu anuncio no está en el Top 200.`;
+
+    // ENVIAR A TELEGRAM
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: mensaje,
+        parse_mode: 'HTML'
+    }, { timeout: 15000 });
+
+    console.log(`[ADS BOT] Alerta enviada (${config.banco} ${config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA'}).`);
+
+  } catch (error) {
+    console.error(`[ADS BOT] Error procesando ${config.banco}:`, error.message);
+  }
 }
 
 async function enviarAnunciosTelegram() {
@@ -158,6 +156,7 @@ async function enviarAnunciosTelegram() {
     let enviados = 0;
     let fallos = 0;
     let activas = 0;
+    
     for (const config of configs) {
       if (config.activo) activas++;
       try {
@@ -168,7 +167,9 @@ async function enviarAnunciosTelegram() {
         fallos++;
       }
     }
+    
     console.log(`[ADS BOT] Ejecución completada. Alertas procesadas: ${enviados}`);
+    
     if (fallos > 0 && fallos === activas) {
       try {
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
