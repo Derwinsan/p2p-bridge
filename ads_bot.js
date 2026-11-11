@@ -52,8 +52,7 @@ async function procesarAlerta(config, agent) {
       try {
         const queryPayTypes = getBinancePayMethod(config.banco) === 'Wally Tech' ? [] : [getBinancePayMethod(config.banco)];
       
-      const queryPayTypes = getBinancePayMethod(config.banco) === 'Wally Tech' ? [] : [getBinancePayMethod(config.banco)];
-        const res = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      const res = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
           page: page, rows: 100, 
           payTypes: queryPayTypes,
           countries: [],
