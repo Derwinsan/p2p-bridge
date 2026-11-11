@@ -42,7 +42,7 @@ async function procesarAlerta(config, agent) {
   if (!config.activo) return;
 
   const isWally = getBinancePayMethod(config.banco).toLowerCase().includes('wally');
-  const pagesToFetch = isWally ? 5 : 2; // Buscar en 500 anuncios si es Wally
+  const pagesToFetch = isWally ? 5 : 2; 
   
   const fetchPage = async (page) => {
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -52,11 +52,10 @@ async function procesarAlerta(config, agent) {
         const res = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
           page: page, rows: 100,
           payTypes: queryPayTypes,
-          countries: [],
+          countries: ['PA', 'VE'], // <-- RESTRICCIÓN LOCAL PARA VER EL MISMO MERCADO QUE USTED
           publisherType: null,
           asset: 'USDT', fiat: config.fiat || 'USD',
-          tradeType: config.trade_type
-          // ELIMINADO transAmount PARA QUE BINANCE NO OCULTE ANUNCIOS
+          tradeType: config.trade_type // <-- RESPETA SI ES COMPRA O VENTA
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
 
         let finalAds = res.data && res.data.data ? res.data.data : [];
@@ -64,7 +63,6 @@ async function procesarAlerta(config, agent) {
         if (isWally) {
           finalAds = finalAds.filter(a => {
             const methods = a.adv.tradeMethods || [];
-            // BLINDAJE: Se agrega validación (m.tradeMethodName &&) para evitar error si Binance envía null
             return methods.some(m => m.tradeMethodName && String(m.tradeMethodName).toLowerCase().includes('wally'));
           });
         }
@@ -107,11 +105,8 @@ async function procesarAlerta(config, agent) {
         return;
     }
 
-    if (config.trade_type === 'BUY') {
-        filtrados.sort((a, b) => parseFloat(a.adv.price) - parseFloat(b.adv.price));
-    } else {
-        filtrados.sort((a, b) => parseFloat(b.adv.price) - parseFloat(a.adv.price));
-    }
+    // SIEMPRE ORDENAR DE MENOR A MAYOR (El más competitivo primero)
+    filtrados.sort((a, b) => parseFloat(a.adv.price) - parseFloat(b.adv.price));
 
     const top7 = filtrados.slice(0, 7);
     const emoji = config.trade_type === 'BUY' ? '🟢' : '🔵';
@@ -125,9 +120,8 @@ async function procesarAlerta(config, agent) {
         mensaje += `${i + 1}. $${price} | ${merchant}\n`;
     });
 
-    mensaje += `\n⚠️ Tu anuncio no está en el Top 200.`;
+    // (Eliminado el mensaje falso del Top 200)
 
-    // Bloque try/catch para que un fallo de Telegram no rompa el bucle de los otros bancos
     try {
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
             chat_id: TELEGRAM_CHAT_ID,
@@ -176,17 +170,6 @@ async function enviarAnunciosTelegram() {
     }
     
     console.log(`[ADS BOT] Ejecución completada. Alertas procesadas: ${enviados}`);
-    
-    if (fallos > 0 && fallos === activas) {
-      try {
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-          chat_id: TELEGRAM_CHAT_ID,
-          text: '🚨 ALERTA CRÍTICA: El Bot P2P no pudo consultar Binance en ninguna alerta. Posible fallo de Proxy o bloqueo de IP.',
-          parse_mode: 'HTML'
-        });
-        console.log('[ADS BOT] Alerta de fallo crítico enviada a Telegram.');
-      } catch (err) {}
-    }
   } catch (error) {
     console.error('[ADS BOT] Error general:', error.message);
   }
