@@ -64,7 +64,8 @@ async function procesarAlerta(config, agent) {
         if (isWally) {
           finalAds = finalAds.filter(a => {
             const methods = a.adv.tradeMethods || [];
-            return methods.some(m => m.tradeMethodName.toLowerCase().includes('wally'));
+            // BLINDAJE: Se agrega validación (m.tradeMethodName &&) para evitar error si Binance envía null
+            return methods.some(m => m.tradeMethodName && String(m.tradeMethodName).toLowerCase().includes('wally'));
           });
         }
 
@@ -90,14 +91,14 @@ async function procesarAlerta(config, agent) {
       return;
     }
 
-    const minPrice = parseFloat(config.precio_min);
-    const maxPrice = parseFloat(config.precio_max);
+    const minPrice = parseFloat(config.precio_min) || 0;
+    const maxPrice = parseFloat(config.precio_max) || 9999;
     const montoUsuario = parseFloat(config.monto) || 10;
     
     let filtrados = data.filter(a => {
-        const price = parseFloat(a.adv.price);
-        const minTrans = parseFloat(a.adv.minSingleTransAmount);
-        const maxTrans = parseFloat(a.adv.maxSingleTransAmount);
+        const price = parseFloat(a.adv.price) || 0;
+        const minTrans = parseFloat(a.adv.minSingleTransAmount) || 0;
+        const maxTrans = parseFloat(a.adv.maxSingleTransAmount) || 999999;
         return price >= minPrice && price <= maxPrice && montoUsuario >= minTrans && montoUsuario <= maxTrans;
     });
 
@@ -126,19 +127,22 @@ async function procesarAlerta(config, agent) {
 
     mensaje += `\n⚠️ Tu anuncio no está en el Top 200.`;
 
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-        chat_id: TELEGRAM_CHAT_ID,
-        text: mensaje,
-        parse_mode: 'HTML'
-    }, { timeout: 15000 });
-
-    console.log(`[ADS BOT] Alerta enviada (${config.banco} ${config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA'}).`);
+    // Bloque try/catch para que un fallo de Telegram no rompa el bucle de los otros bancos
+    try {
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+            chat_id: TELEGRAM_CHAT_ID,
+            text: mensaje,
+            parse_mode: 'HTML'
+        }, { timeout: 15000 });
+        console.log(`[ADS BOT] Alerta enviada (${config.banco} ${config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA'}).`);
+    } catch (tgError) {
+        console.error(`[ADS BOT] Fallo al enviar a Telegram para ${config.banco}:`, tgError.message);
+    }
 
   } catch (error) {
     console.error(`[ADS BOT] Error procesando ${config.banco}:`, error.message);
   }
 }
-
 
 async function enviarAnunciosTelegram() {
   try {
