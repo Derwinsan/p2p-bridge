@@ -35,16 +35,22 @@ async function procesarAlerta(config, agent) {
   console.log(`[ADS BOT] Monitoreando ${config.banco} ${tipoTexto} entre $${config.precio_min} y $${config.precio_max}...`);
 
   // Consultar 2 páginas para tener el Top 200
-  const [res1, res2] = await Promise.all([
-    axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-      page: 1, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant', 
-      asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
-    }, { httpsAgent: agent, timeout: 15000 }),
-    axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-      page: 2, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant', 
-      asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
-    }, { httpsAgent: agent, timeout: 15000 })
-  ]);
+  const fetchPage = async (page) => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+          page: page, rows: 100, payTypes: [config.banco], countries: ["VE"], publisherType: 'merchant',
+          asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
+        }, { httpsAgent: agent, timeout: 15000, family: 4 });
+      } catch (e) {
+        if (attempt === 3) throw e;
+        console.log(`[ADS BOT] Fallo de red (Intento ${attempt}/3) en ${config.banco}. Reintentando en 3s...`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+  };
+
+  const [res1, res2] = await Promise.all([ fetchPage(1), fetchPage(2) ]);
   
   const data = [...(res1.data.data || []), ...(res2.data.data || [])];
 
