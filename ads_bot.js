@@ -51,8 +51,13 @@ async function procesarAlerta(config, agent) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         return await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-          page: page, rows: 100, payTypes: [getBinancePayMethod(config.banco)], countries: [], publisherType: null,
-          asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
+          page: page, rows: 100, 
+          payTypes: getBinancePayMethod(config.banco) === 'Wally Tech' ? [] : [getBinancePayMethod(config.banco)],
+          countries: [],
+          publisherType: null,
+          asset: 'USDT', fiat: config.fiat || 'USD', 
+          tradeType: config.trade_type === 'BUY' ? 'SELL' : 'BUY', // Invertimos para ver a la competencia
+          transAmount: config.monto || 10 transAmount: config.monto || 10
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
       } catch (e) {
         if (attempt === 3) throw e;
@@ -65,6 +70,11 @@ async function procesarAlerta(config, agent) {
   const [res1, res2] = await Promise.all([ fetchPage(1), fetchPage(2) ]);
   
   let data = [...(res1.data.data || []), ...(res2.data.data || [])];
+
+  // FILTRO MANUAL PARA WALLY (por el bug de Binance)
+  if (getBinancePayMethod(config.banco) === 'Wally Tech') {
+    data = data.filter(a => a.adv && a.adv.tradeMethods && a.adv.tradeMethods.some(m => m.tradeMethodName === 'Wally Tech'));
+  }
 
   // FILTRO DE COMPETENCIA: Solo Merchants
   data = data.filter(a => a.advertiser && a.advertiser.userType === 'merchant');
