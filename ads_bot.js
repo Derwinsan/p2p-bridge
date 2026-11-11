@@ -89,14 +89,18 @@ async function procesarAlerta(config, agent) {
       return;
     }
 
-    const minPrice = parseFloat(config.precio_min) || 0;
+        const minPrice = parseFloat(config.precio_min) || 0;
     const maxPrice = parseFloat(config.precio_max) || 9999;
     const montoUsuario = parseFloat(config.monto) || 10;
     
     let filtrados = data.filter(a => {
-    const price = parseFloat(a.adv.price) || 0;
-    return price >= minPrice && price <= maxPrice;
-});
+        const price = parseFloat(a.adv.price) || 0;
+        const minTrans = parseFloat(a.adv.minSingleTransAmount) || 0;
+        const maxTrans = parseFloat(a.adv.maxSingleTransAmount) || 999999;
+        
+        // Filtramos por precio Y por monto (igual que Binance)
+        return price >= minPrice && price <= maxPrice && montoUsuario >= minTrans && montoUsuario <= maxTrans;
+    });
 
     if (filtrados.length === 0) {
         console.log(`[ADS BOT] Sin anuncios en el rango de precio (${config.precio_min} - ${config.precio_max}) o que acepten monto de $${montoUsuario} para ${config.banco}.`);
