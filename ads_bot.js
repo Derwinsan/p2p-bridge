@@ -50,15 +50,24 @@ async function procesarAlerta(config, agent) {
   const fetchPage = async (page) => {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        return await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
-          page: page, rows: 100, 
-          payTypes: getBinancePayMethod(config.banco) === 'Wally Tech' ? [] : [getBinancePayMethod(config.banco)],
-          countries: [],
-          publisherType: null,
-          asset: 'USDT', fiat: config.fiat || 'USD', 
-          tradeType: config.trade_type === 'BUY' ? 'SELL' : 'BUY', // Invertimos para ver a la competencia
-          transAmount: config.monto || 10 transAmount: config.monto || 10
-        }, { httpsAgent: agent, timeout: 15000, family: 4 });
+        const resp = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
+      page: page, rows: 100, countries: ["VE"], publisherType: 'merchant',
+      asset: 'USDT', fiat: config.fiat || 'USD', tradeType: config.trade_type, transAmount: config.monto || 10
+    }, { httpsAgent: agent, timeout: 15000, family: 4 });
+
+    // FILTRO LOCAL (#L-27)
+    const nombreBinance = getBinancePayMethod(config.banco);
+    const adsData = resp.data && resp.data.data ? resp.data.data : [];
+    const filtrados = adsData.filter(a => 
+      (a.adv.payTypes && a.adv.payTypes.includes(nombreBinance)) || 
+      (a.adv.payTypes && a.adv.payTypes.includes(config.banco))
+    );
+    
+    if (filtrados.length === 0) {
+      console.log("[BOT] Sin resultados para " + config.banco);
+    }
+    
+    return { data: { data: filtrados } };
       } catch (e) {
         if (attempt === 3) throw e;
         console.log(`[ADS BOT] Fallo de red (Intento ${attempt}/3) en ${config.banco}. Reintentando en 3s...`);
