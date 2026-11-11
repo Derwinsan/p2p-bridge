@@ -41,10 +41,12 @@ function getBinancePayMethod(banco) {
 async function procesarAlerta(config, agent) {
   if (!config.activo) return;
 
+  const isWally = getBinancePayMethod(config.banco).toLowerCase().includes('wally');
+  const pagesToFetch = isWally ? 5 : 2; // Buscar en 500 anuncios si es Wally
+  
   const fetchPage = async (page) => {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const isWally = getBinancePayMethod(config.banco).toLowerCase().includes('wally');
         const queryPayTypes = isWally ? [] : [getBinancePayMethod(config.banco)];
 
         const res = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
@@ -53,8 +55,8 @@ async function procesarAlerta(config, agent) {
           countries: [],
           publisherType: null,
           asset: 'USDT', fiat: config.fiat || 'USD',
-          tradeType: config.trade_type === 'BUY' ? 'SELL' : 'BUY',
-          transAmount: config.monto || 10
+          tradeType: config.trade_type === 'BUY' ? 'SELL' : 'BUY'
+          // ELIMINADO transAmount PARA QUE BINANCE NO OCULTE ANUNCIOS
         }, { httpsAgent: agent, timeout: 15000, family: 4 });
 
         let finalAds = res.data && res.data.data ? res.data.data : [];
@@ -76,40 +78,41 @@ async function procesarAlerta(config, agent) {
   };
 
   try {
-    // Búsqueda profunda en 3 páginas
-    const [res1, res2, res3] = await Promise.all([ fetchPage(1), fetchPage(2), fetchPage(3) ]);
-    let data = [...(res1.data.data || []), ...(res2.data.data || []), ...(res3.data.data || [])];
+    const promises = [];
+    for (let i = 1; i <= pagesToFetch; i++) promises.push(fetchPage(i));
+    const results = await Promise.all(promises);
+    
+    let data = [];
+    for (const res of results) data = data.concat(res.data.data || []);
 
     if (data.length === 0) {
       console.log(`[ADS BOT] Sin anuncios en ${config.banco} ${config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA'}.`);
       return;
     }
 
-    // FILTRO POR RANGO DE PRECIO
     const minPrice = parseFloat(config.precio_min);
     const maxPrice = parseFloat(config.precio_max);
+    const montoUsuario = parseFloat(config.monto) || 10;
     
     let filtrados = data.filter(a => {
         const price = parseFloat(a.adv.price);
-        return price >= minPrice && price <= maxPrice;
+        const minTrans = parseFloat(a.adv.minSingleTransAmount);
+        const maxTrans = parseFloat(a.adv.maxSingleTransAmount);
+        return price >= minPrice && price <= maxPrice && montoUsuario >= minTrans && montoUsuario <= maxTrans;
     });
 
     if (filtrados.length === 0) {
-        console.log(`[ADS BOT] Sin anuncios en el rango de precio (${config.precio_min} - ${config.precio_max}) para ${config.banco}.`);
+        console.log(`[ADS BOT] Sin anuncios en el rango de precio (${config.precio_min} - ${config.precio_max}) o que acepten monto de $${montoUsuario} para ${config.banco}.`);
         return;
     }
 
-    // ORDENAR: Compra busca el menor precio, Venta busca el mayor
     if (config.trade_type === 'BUY') {
         filtrados.sort((a, b) => parseFloat(a.adv.price) - parseFloat(b.adv.price));
     } else {
         filtrados.sort((a, b) => parseFloat(b.adv.price) - parseFloat(a.adv.price));
     }
 
-    // TOMAR EL TOP 7
     const top7 = filtrados.slice(0, 7);
-
-    // FORMATEAR MENSAJE
     const emoji = config.trade_type === 'BUY' ? '🟢' : '🔵';
     let mensaje = `${emoji} ALERTA P2P (${escapeHtml(config.banco)} - ${config.trade_type === 'BUY' ? 'COMPRA' : 'VENTA'}) ${emoji}\n`;
     mensaje += `📊 Rango: $${config.precio_min} - $${config.precio_max} USD (Monto: $${config.monto})\n\n`;
@@ -123,7 +126,6 @@ async function procesarAlerta(config, agent) {
 
     mensaje += `\n⚠️ Tu anuncio no está en el Top 200.`;
 
-    // ENVIAR A TELEGRAM
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
         chat_id: TELEGRAM_CHAT_ID,
         text: mensaje,
@@ -136,6 +138,7 @@ async function procesarAlerta(config, agent) {
     console.error(`[ADS BOT] Error procesando ${config.banco}:`, error.message);
   }
 }
+
 
 async function enviarAnunciosTelegram() {
   try {
