@@ -107,8 +107,12 @@ async function procesarAlerta(config, agent) {
         return;
     }
 
-    // SIEMPRE ORDENAR DE MENOR A MAYOR (El más competitivo primero)
-    filtrados.sort((a, b) => parseFloat(a.adv.price) - parseFloat(b.adv.price));
+    // ORDENAMIENTO INTELIGENTE (BUY: menor a mayor | SELL: mayor a menor)
+    if (config.trade_type === 'BUY') {
+        filtrados.sort((a, b) => parseFloat(a.adv.price) - parseFloat(b.adv.price));
+    } else {
+        filtrados.sort((a, b) => parseFloat(b.adv.price) - parseFloat(a.adv.price));
+    }
 
     const top7 = filtrados.slice(0, 7);
     const emoji = config.trade_type === 'BUY' ? '🟢' : '🔵';
