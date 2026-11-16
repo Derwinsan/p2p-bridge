@@ -82,7 +82,8 @@ const server = http.createServer(async (req, res) => {
         const pares = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
         const results = {};
         for (const par of pares) {
-          const trades = await getMyTrades(par, 100);
+          const ayer = Date.now() - (24 * 60 * 60 * 1000); // 24 horas atras
+        const trades = await getMyTrades(par, 100, ayer);
           let totalQty = 0;
           let totalCost = 0;
           for (const t of trades) {

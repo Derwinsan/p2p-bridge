@@ -34,13 +34,14 @@ async function getKlines(symbol, interval = '1h', limit = 48, startTime = null, 
   }
 }
 
-async function getMyTrades(symbol, limit = 50) {
+async function getMyTrades(symbol, limit = 50, startTime = null) {
   const apiKey = process.env.BINANCE_API_KEY;
   const apiSecret = process.env.BINANCE_SECRET_KEY;
   if (!apiKey || !apiSecret) throw new Error("Faltan BINANCE_API_KEY y BINANCE_API_SECRET");
   try {
     const timestamp = Date.now();
-    const query = `symbol=${symbol}&limit=${limit}&timestamp=${timestamp}`;
+    let query = `symbol=${symbol}&limit=${limit}&timestamp=${timestamp}`;
+    if (startTime) query += `&startTime=${startTime}`;
     const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
     const url = `https://api.binance.com/api/v3/myTrades?${query}&signature=${signature}`;
     const res = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey }, httpsAgent: agent, timeout: 10000 });
