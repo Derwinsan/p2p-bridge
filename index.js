@@ -75,15 +75,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 5. Klines
-    // NUEVO: Endpoint de Sincronización con el Worker
+      // NUEVO: Endpoint de Sincronización con el Worker
   if (req.url === '/api/sync' && req.method === 'POST') {
     (async () => {
       try {
         const pares = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
         const results = {};
+        const startTime = Date.now() - (24 * 60 * 60 * 1000); // Forzar ultimas 24h
+
         for (const par of pares) {
-          const ayer = Date.now() - (24 * 60 * 60 * 1000); // 24 horas atras
-        const trades = await getMyTrades(par, 100, ayer);
+          const trades = await getMyTrades(par, 100, startTime);
           let totalQty = 0;
           let totalCost = 0;
           for (const t of trades) {
@@ -100,12 +101,12 @@ const server = http.createServer(async (req, res) => {
             };
           }
         }
-        // Enviar al Worker (grid-bot-api)
+        
         const workerToken = process.env.GRID_BOT_TOKEN || "gbp_k9X7mP2vQ8wR4nT6yU1iO5aZ3sD0fG7hJ2kL9mN4bV6cX8";
         await axios.post('https://grid-bot-api.derwinsan1.workers.dev/api/dca/sync', results, {
           headers: { 'Authorization': `Bearer ${workerToken}` }
         });
-        res.end(JSON.stringify({ ok: true, synced: Object.keys(results) }));
+        res.end(JSON.stringify({ ok: true, synced: Object.keys(results), results }));
       } catch (e) {
         console.error("Error en sync:", e.message);
         res.end(JSON.stringify({ error: e.message }));
@@ -113,7 +114,7 @@ const server = http.createServer(async (req, res) => {
     })();
     return;
   }
-  if (req.url.startsWith('/api/binance/klines')) {
+if (req.url.startsWith('/api/binance/klines')) {
     try {
       const urlParams = new URL(req.url, 'http://localhost').searchParams;
       const symbol = urlParams.get('symbol') || 'BTCUSDT';

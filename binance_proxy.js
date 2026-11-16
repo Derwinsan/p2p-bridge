@@ -41,7 +41,9 @@ async function getMyTrades(symbol, limit = 50, startTime = null) {
   try {
     const timestamp = Date.now();
     let query = `symbol=${symbol}&limit=${limit}&timestamp=${timestamp}`;
-    if (startTime) query += `&startTime=${startTime}`;
+    if (startTime) {
+        query += `&startTime=${startTime}`;
+    }
     const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
     const url = `https://api.binance.com/api/v3/myTrades?${query}&signature=${signature}`;
     const res = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey }, httpsAgent: agent, timeout: 10000 });
