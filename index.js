@@ -1,4 +1,5 @@
-﻿const http = require('http');
+﻿const { getPrecios, getKlines, getMyTrades } = require('./binance_proxy');
+const http = require('http');
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { enviarResumenDiario } = require('./daily_summary');
