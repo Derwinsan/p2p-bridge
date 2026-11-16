@@ -1,4 +1,5 @@
-const axios = require('axios');
+﻿const axios = require('axios');
+const crypto = require('crypto');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const PROXY_USER = process.env.PROXY_USER;
@@ -25,7 +26,6 @@ async function getKlines(symbol, interval = '1h', limit = 48, startTime = null, 
     let url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
     if (startTime) url += `&startTime=${startTime}`;
     if (endTime) url += `&endTime=${endTime}`;
-    
     const res = await axios.get(url, { httpsAgent: agent, timeout: 15000 });
     return { klines: res.data };
   } catch (e) {
@@ -34,4 +34,21 @@ async function getKlines(symbol, interval = '1h', limit = 48, startTime = null, 
   }
 }
 
-module.exports = { getPrecios, getKlines };
+async function getMyTrades(symbol, limit = 50) {
+  const apiKey = process.env.BINANCE_API_KEY;
+  const apiSecret = process.env.BINANCE_API_SECRET;
+  if (!apiKey || !apiSecret) throw new Error("Faltan BINANCE_API_KEY y BINANCE_API_SECRET");
+  try {
+    const timestamp = Date.now();
+    const query = `symbol=${symbol}&limit=${limit}&timestamp=${timestamp}`;
+    const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
+    const url = `https://api.binance.com/api/v3/myTrades?${query}&signature=${signature}`;
+    const res = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey }, httpsAgent: agent, timeout: 10000 });
+    return res.data;
+  } catch (e) {
+    console.error(`Error myTrades ${symbol}:`, e.response ? e.response.data : e.message);
+    throw e;
+  }
+}
+
+module.exports = { getPrecios, getKlines, getMyTrades };
