@@ -1,4 +1,4 @@
-const http = require('http');
+﻿const http = require('http');
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { enviarResumenDiario } = require('./daily_summary');
@@ -74,6 +74,43 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 5. Klines
+    // NUEVO: Endpoint de Sincronización con el Worker
+  if (req.url === '/api/sync' && req.method === 'POST') {
+    (async () => {
+      try {
+        const pares = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
+        const results = {};
+        for (const par of pares) {
+          const trades = await getMyTrades(par, 100);
+          let totalQty = 0;
+          let totalCost = 0;
+          for (const t of trades) {
+            if (t.isBuyer) {
+              totalQty += parseFloat(t.qty);
+              totalCost += parseFloat(t.quoteQty);
+            }
+          }
+          if (totalQty > 0) {
+            results[par] = {
+              cantidadCripto: totalQty,
+              precioEntradaPromedio: totalCost / totalQty,
+              capitalUsado: totalCost
+            };
+          }
+        }
+        // Enviar al Worker (grid-bot-api)
+        const workerToken = process.env.GRID_BOT_TOKEN || "gbp_k9X7mP2vQ8wR4nT6yU1iO5aZ3sD0fG7hJ2kL9mN4bV6cX8";
+        await axios.post('https://grid-bot-api.derwinsan1.workers.dev/api/dca/sync', results, {
+          headers: { 'Authorization': `Bearer ${workerToken}` }
+        });
+        res.end(JSON.stringify({ ok: true, synced: Object.keys(results) }));
+      } catch (e) {
+        console.error("Error en sync:", e.message);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    })();
+    return;
+  }
   if (req.url.startsWith('/api/binance/klines')) {
     try {
       const urlParams = new URL(req.url, 'http://localhost').searchParams;
