@@ -36,7 +36,7 @@ async function getKlines(symbol, interval = '1h', limit = 48, startTime = null, 
 
 async function getMyTrades(symbol, limit = 50) {
   const apiKey = process.env.BINANCE_API_KEY;
-  const apiSecret = process.env.BINANCE_API_SECRET;
+  const apiSecret = process.env.BINANCE_SECRET_KEY;
   if (!apiKey || !apiSecret) throw new Error("Faltan BINANCE_API_KEY y BINANCE_API_SECRET");
   try {
     const timestamp = Date.now();
