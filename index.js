@@ -159,3 +159,4 @@ server.listen(PORT, () => {
   console.log(`[CLEAN BRIDGE] Servidor en linea en el puerto ${PORT}`);
   console.log(`[CLEAN BRIDGE] Endpoints: /precios, /klines, /proxy, /test-ads, /test-daily`);
 });
+
