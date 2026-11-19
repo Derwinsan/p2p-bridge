@@ -76,27 +76,22 @@ const server = http.createServer(async (req, res) => {
 
         for (const par of pares) {
           const trades = await getMyTrades(par, 100, startTime);
-          let netQty = 0;
+          const compras = trades
+            .filter(t => t && t.isBuyer)
+            .sort((a, b) => (b.time || 0) - (a.time || 0))
+            .slice(0, 2);
+
           let buyQty = 0;
           let buyCost = 0;
-          for (const t of trades) {
-            const qty = parseFloat(t.qty) || 0;
-            const quoteQty = parseFloat(t.quoteQty) || 0;
-            if (t.isBuyer) {
-              netQty += qty;
-              buyQty += qty;
-              buyCost += quoteQty;
-            } else {
-              netQty -= qty;
-            }
+          for (const t of compras) {
+            buyQty += parseFloat(t.qty) || 0;
+            buyCost += parseFloat(t.quoteQty) || 0;
           }
           if (buyQty > 0) {
-            const avgPrice = buyCost / buyQty;
-            const cantidadFinal = netQty > 0 ? netQty : buyQty;
             results[par] = {
-              cantidadCripto: cantidadFinal,
-              precioEntradaPromedio: avgPrice,
-              capitalUsado: cantidadFinal * avgPrice
+              cantidadCripto: buyQty,
+              precioEntradaPromedio: buyCost / buyQty,
+              capitalUsado: buyCost
             };
           }
         }
