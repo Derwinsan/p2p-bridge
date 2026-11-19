@@ -72,23 +72,31 @@ const server = http.createServer(async (req, res) => {
       try {
         const pares = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
         const results = {};
-        const startTime = Date.now() - (24 * 60 * 60 * 1000); // Forzar ultimas 24h
+        const startTime = null; // Traer ultimos trades sin cortar en 24h
 
         for (const par of pares) {
           const trades = await getMyTrades(par, 100, startTime);
-          let totalQty = 0;
-          let totalCost = 0;
+          let netQty = 0;
+          let buyQty = 0;
+          let buyCost = 0;
           for (const t of trades) {
+            const qty = parseFloat(t.qty) || 0;
+            const quoteQty = parseFloat(t.quoteQty) || 0;
             if (t.isBuyer) {
-              totalQty += parseFloat(t.qty);
-              totalCost += parseFloat(t.quoteQty);
+              netQty += qty;
+              buyQty += qty;
+              buyCost += quoteQty;
+            } else {
+              netQty -= qty;
             }
           }
-          if (totalQty > 0) {
+          if (buyQty > 0) {
+            const avgPrice = buyCost / buyQty;
+            const cantidadFinal = netQty > 0 ? netQty : buyQty;
             results[par] = {
-              cantidadCripto: totalQty,
-              precioEntradaPromedio: totalCost / totalQty,
-              capitalUsado: totalCost
+              cantidadCripto: cantidadFinal,
+              precioEntradaPromedio: avgPrice,
+              capitalUsado: cantidadFinal * avgPrice
             };
           }
         }
