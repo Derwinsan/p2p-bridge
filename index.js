@@ -56,8 +56,6 @@ const server = http.createServer(async (req, res) => {
   // 4. Precios (Binance Spot)
   if (req.url === '/api/binance/precios') {
     try {
-      const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
-      const agent = new HttpsProxyAgent(proxyUrl);
       const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
       const precios = {};
       await Promise.all(symbols.map(async (sym) => {
@@ -120,8 +118,6 @@ if (req.url.startsWith('/api/binance/klines')) {
       const symbol = urlParams.get('symbol') || 'BTCUSDT';
       const interval = urlParams.get('interval') || '1h';
       const limit = urlParams.get('limit') || 48;
-      const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
-      const agent = new HttpsProxyAgent(proxyUrl);
         const r = await getKlines(symbol, interval, limit);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ klines: r.data }));
@@ -142,8 +138,6 @@ if (req.url.startsWith('/api/binance/klines')) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Faltan url o apiKey' }));
         }
-        const proxyUrl = `http://${encodeURIComponent(PROXY_USER)}:${encodeURIComponent(PROXY_PASS)}@${PROXY_URL}`;
-        const agent = new HttpsProxyAgent(proxyUrl);
         const response = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey }, httpsAgent: agent, timeout: 15000 });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(response.data));
