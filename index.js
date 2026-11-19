@@ -123,17 +123,32 @@ if (req.url.startsWith('/api/binance/klines')) {
     }
   }
 
-  // 6. Proxy Binance Spot (para saldos)
+  // 6. Proxy Binance Spot y Simple Earn (reenvio firmado)
   if (req.url === '/api/binance/proxy' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
         const data = body ? JSON.parse(body) : {};
-        const trades = await getMyTrades(data.symbol || 'BTCUSDT', data.limit || 50);
+        if (!data.url || !data.url.startsWith('https://api.binance.com/')) {
+          if (!res.headersSent) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'URL de Binance invalida o faltante' }));
+          }
+          return;
+        }
+
+        const headers = {};
+        if (data.apiKey) {
+          headers['X-MBX-APIKEY'] = data.apiKey;
+        }
+
+        const bRes = await fetch(data.url, { headers });
+        const rawText = await bRes.text();
+
         if (!res.headersSent) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ data: trades }));
+          res.writeHead(bRes.status, { 'Content-Type': 'application/json' });
+          res.end(rawText);
         }
       } catch (e) {
         if (!res.headersSent) {
