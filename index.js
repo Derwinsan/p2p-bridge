@@ -72,7 +72,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const pares = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
         const results = {};
-        const startTime = null; // Traer ultimos trades sin cortar en 24h
+        const startTime = null;
 
         for (const par of pares) {
           const trades = await getMyTrades(par, 100, startTime);
@@ -90,6 +90,16 @@ const server = http.createServer(async (req, res) => {
               netQty -= qty;
             }
           }
+          if (buyQty > 0) {
+            const avgPrice = buyCost / buyQty;
+            const cantidadFinal = netQty > 0 ? netQty : buyQty;
+            results[par] = {
+              cantidadCripto: cantidadFinal,
+              precioEntradaPromedio: avgPrice,
+              capitalUsado: cantidadFinal * avgPrice
+            };
+          }
+        }
           if (buyQty > 0) {
             const avgPrice = buyCost / buyQty;
             const cantidadFinal = netQty > 0 ? netQty : buyQty;
