@@ -56,16 +56,9 @@ const server = http.createServer(async (req, res) => {
   // 4. Precios (Binance Spot)
   if (req.url === '/api/binance/precios') {
     try {
-      const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
-      const precios = {};
-      await Promise.all(symbols.map(async (sym) => {
-        try {
-          const r = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, { httpsAgent: agent, timeout: 10000 });
-          precios[sym] = parseFloat(r.data.price);
-        } catch (e) { }
-      }));
+      const result = await getPrecios();
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ precios }));
+      return res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: e.message }));
@@ -120,7 +113,7 @@ if (req.url.startsWith('/api/binance/klines')) {
       const limit = urlParams.get('limit') || 48;
         const r = await getKlines(symbol, interval, limit);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ klines: r.data }));
+      return res.end(JSON.stringify({ klines: r.klines }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: e.message, klines: [] }));
@@ -133,20 +126,15 @@ if (req.url.startsWith('/api/binance/klines')) {
     req.on('data', chunk => body += chunk);
     req.on('end', async () => {
       try {
-        const { url, apiKey } = JSON.parse(body);
-        if (!url || !apiKey) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Faltan url o apiKey' }));
-        }
-        const response = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey }, httpsAgent: agent, timeout: 15000 });
+        const data = JSON.parse(body);
+        const trades = await getMyTrades(data.symbol || 'BTCUSDT', data.limit || 50);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(response.data));
-      } catch (error) {
+        res.end(JSON.stringify({ data: trades }));
+      } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: error.message }));
+        res.end(JSON.stringify({ error: e.message }));
       }
     });
-    return;
   }
 
   // 7. Default
