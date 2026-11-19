@@ -143,11 +143,33 @@ if (req.url.startsWith('/api/binance/klines')) {
           headers['X-MBX-APIKEY'] = data.apiKey;
         }
 
-        const bRes = await fetch(data.url, { headers });
-        const rawText = await bRes.text();
+        const proxyUrl = process.env.BINANCE_PROXY_URL || "http://h8sU6CY4mnWrK8y:QyNuot5TdcGVXBW@51.146.17.165:46502";
+        let bResStatus = 502;
+        let rawText = "";
 
+        if (proxyUrl) {
+          const { HttpsProxyAgent } = await import("https-proxy-agent");
+          const axiosMod = (await import("axios")).default;
+          const agent = new HttpsProxyAgent(proxyUrl);
+          const axRes = await axiosMod({
+            method: "GET",
+            url: data.url,
+            headers,
+            httpsAgent: agent,
+            httpAgent: agent,
+            proxy: false,
+            validateStatus: () => true,
+            timeout: 15000
+          });
+          bResStatus = axRes.status;
+          rawText = typeof axRes.data === "string" ? axRes.data : JSON.stringify(axRes.data);
+        } else {
+          const bRes = await fetch(data.url, { headers });
+          bResStatus = bRes.status;
+          rawText = await bRes.text();
+        }
         if (!res.headersSent) {
-          res.writeHead(bRes.status, { 'Content-Type': 'application/json' });
+          res.writeHead(bResStatus, { 'Content-Type': 'application/json' });
           res.end(rawText);
         }
       } catch (e) {
