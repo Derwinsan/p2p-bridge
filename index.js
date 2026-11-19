@@ -100,17 +100,7 @@ const server = http.createServer(async (req, res) => {
             };
           }
         }
-          if (buyQty > 0) {
-            const avgPrice = buyCost / buyQty;
-            const cantidadFinal = netQty > 0 ? netQty : buyQty;
-            results[par] = {
-              cantidadCripto: cantidadFinal,
-              precioEntradaPromedio: avgPrice,
-              capitalUsado: cantidadFinal * avgPrice
-            };
-          }
-        }
-        
+
         const workerToken = process.env.GRID_BOT_TOKEN || "gbp_k9X7mP2vQ8wR4nT6yU1iO5aZ3sD0fG7hJ2kL9mN4bV6cX8";
         await axios.post('https://grid-bot-api.derwinsan1.workers.dev/api/dca/sync', results, {
           headers: { 'Authorization': `Bearer ${workerToken}` }
