@@ -17,16 +17,31 @@ if (PROXY_URL && PROXY_USER && PROXY_PASS) {
   proxyUrl.password = PROXY_PASS;
   agent = new HttpsProxyAgent(proxyUrl.toString());
   console.log(`[BINANCE_PROXY] Proxy configurado exitosamente en ${proxyUrl.hostname}:${proxyUrl.port}`);
+} else {
+  console.warn('[BINANCE_PROXY] ADVERTENCIA: No hay configuracion de proxy.');
 }
 
 const apiClient = axios.create({
   baseURL: 'https://api.binance.com',
   timeout: 20000,
   httpsAgent: agent,
-  proxy: false  // 👈 CLAVE: Desactiva el proxy nativo de axios
+  proxy: false
 });
 
-async function getPrecios() { /* ... igual ... */ }
+async function getPrecios() {
+  const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
+  const precios = {};
+  await Promise.all(symbols.map(async (sym) => {
+    try {
+      const res = await apiClient.get(`/api/v3/ticker/price?symbol=${sym}`);
+      precios[sym] = parseFloat(res.data.price);
+    } catch (e) { 
+      console.error(`Error precio ${sym}:`, e.message); 
+    }
+  }));
+  return { precios };
+}
+
 async function getKlines(symbol, interval = '1h', limit = 48, startTime = null, endTime = null) {
   try {
     let url = `/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
@@ -39,4 +54,29 @@ async function getKlines(symbol, interval = '1h', limit = 48, startTime = null, 
     return { klines: [] };
   }
 }
-// ... resto de funciones usando apiClient
+
+async function getMyTrades(symbol, limit = 50, startTime = null) {
+  const apiKey = process.env.BINANCE_API_KEY;
+  const apiSecret = process.env.BINANCE_SECRET_KEY || process.env.BINANCE_API_SECRET;
+  
+  if (!apiKey || !apiSecret) {
+    throw new Error(`Faltan credenciales. API_KEY: ${!!apiKey}, SECRET: ${!!apiSecret}`);
+  }
+
+  try {
+    const timestamp = Date.now() - 1000;
+    let query = `symbol=${symbol}&limit=${limit}&timestamp=${timestamp}&recvWindow=60000`;
+    if (startTime) query += `&startTime=${startTime}`;
+    
+    const signature = crypto.createHmac('sha256', apiSecret).update(query).digest('hex');
+    const url = `/api/v3/myTrades?${query}&signature=${signature}`;
+    
+    const res = await apiClient.get(url, { headers: { 'X-MBX-APIKEY': apiKey } });
+    return res.data;
+  } catch (e) {
+    console.error(`Error myTrades ${symbol}:`, e.response ? e.response.data : e.message);
+    throw e;
+  }
+}
+
+module.exports = { getPrecios, getKlines, getMyTrades };
